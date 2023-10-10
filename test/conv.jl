@@ -29,3 +29,12 @@ import KernelDensityEstimation: conv
         @test conv(u, v, :valid) ≈ [5, -9, 7, 6]
     end
 end
+
+@testset "Other checks" begin
+    let u = Float64[1, 1, 1], v = Float32[1, 1, 0, 0, 0, 1, 1]
+        @test @inferred(conv(u, v, :full)) isa Vector{Float64}
+    end
+    let u = Float32[1, 1, 1], v = Float64[1, 1, 0, 0, 0, 1, 1]
+        @test @inferred(conv(u, v, :full)) isa Vector{Float64}
+    end
+end
