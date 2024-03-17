@@ -59,5 +59,14 @@ using Random: rand
         @test filter(!iszero, c₅) == h₁
         @test sum(c₅) ≈ 1.0
         @test b₅ ≈ b₀
+
+        # make sure errors do not occur when uniform data is provided
+        let (e, c, bw) = _kde_prepare(ones(100))
+            @test length(e) == 2
+            @test iszero(last(e) - first(e))
+            @test isfinite(bw) && !iszero(bw)
+            @test sum(c) == 1.0
+        end
     end
+
 end

@@ -17,7 +17,6 @@ function _count_var(pred, v)
         # update online variance, via Welford's algorithm
         σ² = (one(T) - f) * σ² + f * (x - μ) * (x - μ₋₁)
     end
-    n < 2 && return 0, T(NaN)
     return n, σ²
 end
 
@@ -64,13 +63,15 @@ function _kde_prepare(v, lo = nothing, hi = nothing;
     #   - bw = σ̂ n^(-1/5) C₂(k)
     #     C₂(k) = 2 ( 8R(k)√π / 96κ₂² )^(1/5) == (4/3)^(1/5)
     n, σ² = _count_var(z -> lo′ ≤ z ≤ hi′, v)
-    bw = sqrt(σ²) * (T(4 // 3) / n)^(one(T) / 5)
+    bw = ifelse(iszero(σ²), eps(lo′), sqrt(σ²) * (T(4 // 3) / n)^(one(T) / 5))
 
     if isnothing(npts)
-        npts′ = round(Int, bwratio * (hi′ - lo′) / bw)
+        npts′ = max(1, round(Int, bwratio * (hi′ - lo′) / bw))
     else
-        npts′ = npts
+        npts > 0 || throw(ArgumentError("npts must be a positive integer"))
+        npts′ = Int(npts)
     end
+
     # histogram the raw data points into bins which are a factor ≈ N narrower
     # than the bandwidth of the kernel
     # N.B. use          range(..., length = round(Int, N * (hi′ - lo′) / bw))
