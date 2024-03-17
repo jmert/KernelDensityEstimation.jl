@@ -18,6 +18,12 @@ function histogram(v, edges::AbstractRange{<:Real})
     upl = last(edges)
     stp = step(edges)
     N = length(edges) - 1
+
+    # if edges is a zero-width span, step is zero and will div-by-zero unless modified
+    if off == upl
+        stp = one(off)
+    end
+
     counts = zeros(Int, N)
     for x in v
         # N.B. ii is a 0-index offset
