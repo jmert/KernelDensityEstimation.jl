@@ -69,4 +69,8 @@ using Random: rand
         end
     end
 
+    @testset "Type stability" begin
+        @test (@inferred _kde_prepare([1.0, 2.0], npts = 2)
+               isa Tuple{typeof(1.0:0.5:2.0), Vector{Float64}, Float64})
+    end
 end

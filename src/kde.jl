@@ -42,12 +42,8 @@ function _kde_prepare(v, lo = nothing, hi = nothing;
     T = float(eltype(v))
 
     # determine lower and upper limits of the histogram
-    if isnothing(lo) && isnothing(hi)
-        lo′, hi′ = extrema(v)
-    else
-        lo′ = isnothing(lo) ? minimum(v) : lo
-        hi′ = isnothing(hi) ? maximum(v) : hi
-    end
+    lo′ = isnothing(lo) ? minimum(v) : lo
+    hi′ = isnothing(hi) ? maximum(v) : hi
 
     # Estimate a nominal bandwidth using Silverman's Rule.
     # Used for:
@@ -62,7 +58,9 @@ function _kde_prepare(v, lo = nothing, hi = nothing;
     # - Section 2.9, letting ν = 2:
     #   - bw = σ̂ n^(-1/5) C₂(k)
     #     C₂(k) = 2 ( 8R(k)√π / 96κ₂² )^(1/5) == (4/3)^(1/5)
-    n, σ² = _count_var(z -> lo′ ≤ z ≤ hi′, v)
+    n, σ² = let pred = ≥(lo′) ∘ ≤(hi′)
+        _count_var(pred, v)
+    end
     bw = ifelse(iszero(σ²), eps(lo′), sqrt(σ²) * (T(4 // 3) / n)^(one(T) / 5))
 
     if isnothing(npts)
