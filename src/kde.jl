@@ -104,11 +104,20 @@ density estimate:
   interaction with implicit zeros beyond the bounds of the low and high edges of the
   histogram.
 
+- `opt_linearboundary` — If `true`, corrections are applied to account for non-zero
+  slope at the edges of the KDE. Note that when this correction is enabled,
+  `opt_normalize` is effectively ignored since overall normalization is an implicit part
+  of this correction.
+
 # Extended help
 
-A truncated Gaussian smoothing kernel is assumed. The Gaussian is truncated at ``4σ``.
+- A truncated Gaussian smoothing kernel is assumed. The Gaussian is truncated at ``4σ``.
+- The linear boundary correction is explained in Refs. Lewis (2019) and Jones (1996).
 
 ## References:
+
+- M. C. Jones and P. J. Foster. “A simple nonnegative boundary correction method for kernel
+  density estimation”. In: Statistica Sinica 6 (1996), pp. 1005–1013.
 
 - A. Lewis. "GetDist: a Python package for analysing Monte Carlo samples".
   In: _arXiv e-prints_ (Oct. 2019).
@@ -117,7 +126,7 @@ A truncated Gaussian smoothing kernel is assumed. The Gaussian is truncated at `
 function kde(v;
              lo = nothing, hi = nothing, nbins = nothing,
              bandwidth = nothing, bwratio = 8,
-             opt_normalize = true
+             opt_normalize = true, opt_linearboundary = true
             )
     T = eltype(v)
     edges, counts, bw_s = _kde_prepare(v, lo, hi, nbins; bwratio = bwratio)
@@ -142,15 +151,36 @@ function kde(v;
 
     # convolve the data with the kernel to construct a density estimate
     K̂ = plan_conv(counts, kernel)
-    f = conv(counts, K̂, :same)
+    f₀ = conv(counts, K̂, :same)
 
-    if opt_normalize
-        # and then properly normalize the estimate, which accounts both for implicit zeros
-        # outside the histogram bounds
+    if opt_normalize || opt_linearboundary
+        # normalize the estimate, which accounts for implicit zeros outside the histogram
+        # bounds
         Θ = fill!(similar(counts), one(T))
         μ₀ = conv(Θ, K̂, :same)
-        f ./= μ₀
+        f₀ ./= μ₀
+    end
+    if opt_linearboundary
+        # apply a linear boundary correction
+        # see Eqn 12 & 16 of Lewis (2019)
+        #   N.B. the denominator of A₀ should have [W₂]⁻¹ instead of W₂
+        kernel .*= xx
+        replan_conv!(K̂, kernel)
+        μ₁ = conv(Θ, K̂, :same)
+        f′ = conv(counts, K̂, :same)
+
+        kernel .*= xx
+        replan_conv!(K̂, kernel)
+        μ₂ = conv(Θ, K̂, :same)
+        μ₀₂ = (μ₂ .*= μ₀)
+
+        # function to force f̂ to be positive
+        # see Eqn. 17 of Lewis (2019)
+        pos(f₁, f₂) = iszero(f₁) ? zero(f₁) : f₁ * exp(f₂ / f₁ - one(f₁))
+        f̂ = pos.(f₀, (μ₀₂ .* f₀ .- μ₁ .* f′) ./ (μ₀₂ .- μ₁.^2))
+    else
+        f̂ = f₀
     end
 
-    return centers, f
+    return centers, f̂
 end
