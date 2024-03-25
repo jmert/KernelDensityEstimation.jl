@@ -91,23 +91,23 @@ end
     # Tune the bandwidth to be much smaller than the bin sizes, which effectively means
     # we just get back the internal histogram (when the normalization option is disabled).
     x, f = kde(v_uniform, nbins = nbins, bandwidth = 0.1Δx,
-               opt_normalize = false, opt_linearboundary = false)
+               opt_normalize = false, opt_linearboundary = false, opt_multiply = false)
     @test all(f .≈ p_uniform)
     # Then increase the bandwidth to be the same size of the bins. The outermost bins will
     # impacted by the kernel convolving with implicit zeros beyond the edges of the
     # distribution, so we should expect a significant decrease in the first and last bin.
     x, f = kde(v_uniform, nbins = nbins, bandwidth = Δx,
-               opt_normalize = false, opt_linearboundary = false)
+               opt_normalize = false, opt_linearboundary = false, opt_multiply = false)
     @test all(abs.(f[2:end-1] .- p_uniform) .< 1e-3)  # approximate p_uniform
     @test all(     f[[1,end]] .- p_uniform  .< -1e-3) # systematically less than p_uniform
     # Enable the normalization option, which makes a correction for the implicit zeros
     # being included in the convolution
     x, f = kde(v_uniform, nbins = nbins, bandwidth = Δx,
-               opt_normalize = true, opt_linearboundary = false)
+               opt_normalize = true, opt_linearboundary = false, opt_multiply = false)
     @test all(abs.(f .- p_uniform) .< 1e-3)  # approximately p_uniform
     # and that correction keeps working as the bandwidth causes multiple bins to be affected
     x, f = kde(v_uniform, nbins = nbins, bandwidth = 6Δx,
-               opt_normalize = true, opt_linearboundary = false)
+               opt_normalize = true, opt_linearboundary = false, opt_multiply = false)
     @test all(abs.(f .- p_uniform) .< 1e-3)  # approximately p_uniform
 
 
@@ -118,9 +118,9 @@ end
     bw = 1.0
 
     x, f1 = kde(v_kron, lo = -6bw, hi = 6bw, nbins = 251, bandwidth = bw,
-                opt_normalize = false, opt_linearboundary = false)
+                opt_normalize = false, opt_linearboundary = false, opt_multiply = false)
     x, f2 = kde(v_kron, lo = -6bw, hi = 6bw, nbins = 251, bandwidth = bw,
-                opt_normalize = true, opt_linearboundary = false)
+                opt_normalize = true, opt_linearboundary = false, opt_multiply = false)
     g = exp.(.-(x ./ bw) .^2 ./ 2) ./ (bw * sqrt(2π)) .* step(x)
     @test all(isapprox.(f1, g, atol = 1e-5))
     @test all(isapprox.(f2, g, atol = 1e-5))

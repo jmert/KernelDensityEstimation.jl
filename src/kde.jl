@@ -109,6 +109,8 @@ density estimate:
   `opt_normalize` is effectively ignored since overall normalization is an implicit part
   of this correction.
 
+- `opt_multiply` —
+
 # Extended help
 
 - A truncated Gaussian smoothing kernel is assumed. The Gaussian is truncated at ``4σ``.
@@ -126,11 +128,9 @@ density estimate:
 function kde(v;
              lo = nothing, hi = nothing, nbins = nothing,
              bandwidth = nothing, bwratio = 8,
-             opt_normalize = true, opt_linearboundary = true
+             opt_normalize = true, opt_linearboundary = true, opt_multiply = true
             )
-    T = eltype(v)
     edges, counts, bw_s = _kde_prepare(v, lo, hi, nbins; bwratio = bwratio)
-
     bw = isnothing(bandwidth) ? bw_s : bandwidth
 
     # bin centers instead of the bin edges
@@ -141,45 +141,57 @@ function kde(v;
     # make sure the kernel axis is centered on zero
     nn = ceil(Int, 4bw / Δx)
     xx = range(-nn * Δx, nn * Δx, step = Δx)
-    # construct the convolution kernel
-    # N.B. Mathematically normalizing the kernel, such as with
-    #        kernel = exp.(-(xx ./ bw) .^ 2 ./ 2) .* (Δx / bw / sqrt(2T(π)))
-    #      breaks down when bw << Δx. Instead of trying to work around that, just take the
-    #      easy route and just post-normalize a simpler calculation.
-    kernel = exp.(-(xx ./ bw) .^ 2 ./ 2)
-    kernel ./= sum(kernel)
 
-    # convolve the data with the kernel to construct a density estimate
-    K̂ = plan_conv(counts, kernel)
-    f₀ = conv(counts, K̂, :same)
+    function _kde(counts)
+        # construct the convolution kernel
+        # N.B. Mathematically normalizing the kernel, such as with
+        #        kernel = exp.(-(xx ./ bw) .^ 2 ./ 2) .* (Δx / bw / sqrt(2T(π)))
+        #      breaks down when bw << Δx. Instead of trying to work around that, just take the
+        #      easy route and just post-normalize a simpler calculation.
+        kernel = exp.(-(xx ./ bw) .^ 2 ./ 2)
+        kernel ./= sum(kernel)
 
-    if opt_normalize || opt_linearboundary
-        # normalize the estimate, which accounts for implicit zeros outside the histogram
-        # bounds
-        Θ = fill!(similar(counts), one(T))
-        μ₀ = conv(Θ, K̂, :same)
-        f₀ ./= μ₀
+        # convolve the data with the kernel to construct a density estimate
+        K̂ = plan_conv(counts, kernel)
+        f₀ = conv(counts, K̂, :same)
+
+        if opt_normalize || opt_linearboundary
+            # normalize the estimate, which accounts for implicit zeros outside the histogram
+            # bounds
+            Θ = fill!(similar(counts), true)
+            μ₀ = conv(Θ, K̂, :same)
+            f₀ ./= μ₀
+        end
+        if opt_linearboundary
+            # apply a linear boundary correction
+            # see Eqn 12 & 16 of Lewis (2019)
+            #   N.B. the denominator of A₀ should have [W₂]⁻¹ instead of W₂
+            kernel .*= xx
+            replan_conv!(K̂, kernel)
+            μ₁ = conv(Θ, K̂, :same)
+            f′ = conv(counts, K̂, :same)
+
+            kernel .*= xx
+            replan_conv!(K̂, kernel)
+            μ₂ = conv(Θ, K̂, :same)
+            μ₀₂ = (μ₂ .*= μ₀)
+
+            # function to force f̂ to be positive
+            # see Eqn. 17 of Lewis (2019)
+            pos(f₁, f₂) = iszero(f₁) ? zero(f₁) : f₁ * exp(f₂ / f₁ - one(f₁))
+            f̂ = pos.(f₀, (μ₀₂ .* f₀ .- μ₁ .* f′) ./ (μ₀₂ .- μ₁.^2))
+        else
+            f̂ = f₀
+        end
+        return f̂
     end
-    if opt_linearboundary
-        # apply a linear boundary correction
-        # see Eqn 12 & 16 of Lewis (2019)
-        #   N.B. the denominator of A₀ should have [W₂]⁻¹ instead of W₂
-        kernel .*= xx
-        replan_conv!(K̂, kernel)
-        μ₁ = conv(Θ, K̂, :same)
-        f′ = conv(counts, K̂, :same)
 
-        kernel .*= xx
-        replan_conv!(K̂, kernel)
-        μ₂ = conv(Θ, K̂, :same)
-        μ₀₂ = (μ₂ .*= μ₀)
-
-        # function to force f̂ to be positive
-        # see Eqn. 17 of Lewis (2019)
-        pos(f₁, f₂) = iszero(f₁) ? zero(f₁) : f₁ * exp(f₂ / f₁ - one(f₁))
-        f̂ = pos.(f₀, (μ₀₂ .* f₀ .- μ₁ .* f′) ./ (μ₀₂ .- μ₁.^2))
-    else
-        f̂ = f₀
+    f̂ = _kde(counts)
+    if opt_multiply
+        nonzero(x) = iszero(x) ? one(x) : x
+        g = nonzero.(f̂)
+        f̂ = _kde(counts ./ g)
+        f̂ .*= g
     end
 
     return centers, f̂
