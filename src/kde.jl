@@ -87,8 +87,9 @@ function _kdebin(::HistogramBinning, data, lo, hi, Δx, nbins)
         f[ii + 1] += one(T)
         ν += 1
     end
+    w = inv(ν * Δx)
     for ii in eachindex(f)
-        f[ii] /= ν
+        f[ii] *= w
     end
     return ν, f
 end
