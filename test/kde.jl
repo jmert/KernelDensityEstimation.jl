@@ -1,79 +1,67 @@
 using KernelDensityEstimation
-using KernelDensityEstimation: _count_var, _kde_prepare
+const KDE = KernelDensityEstimation
 
 using Statistics: std, var
 using Random: rand
 
-@testset "Preparations" begin
-    @testset "Helper: filtered count & variance" begin
-        x = 10 .* rand(Float64, 500)
-        for (l, h) in [(0, 10), (5, 10), (5, 8)]
-            pred(z) = l ≤ z ≤ h
-            x′ = filter(pred, x)
-            ν′, σ′² = length(x′), var(x′, corrected = false)
-            ν, σ² = _count_var(pred, x)
-            @test ν == ν′
-            @test σ² ≈ σ′²
-        end
+@testset "Simple Binning" begin
+    # raw data
+    v₁ = Float64[0.5, 1.5, 1.5, 2.5, 2.5, 2.5, 3.5, 3.5, 4.5]
+    # expected histogram (excluding zero bins when binned finer)
+    h₁ = [1, 2, 3, 2, 1] ./ length(v₁)
+    @test sum(h₁) ≈ 1.0
+    # bandwidth estimate
+    ν, σ̂ = length(v₁), std(v₁, corrected = false)
+    b₀ = σ̂ * (4//3 / ν)^(1/5)  # Silverman's rule
+
+    edges2centers(r) = r[2:end] .- step(r) / 2
+
+    # prepared using known limits and number of bins
+    k₁, info = kde(KDE.HistogramBinning(), v₁; lo = 0, hi = 5, nbins = 5)
+    @test k₁.x == edges2centers(0.0:1.0:5.0)
+    @test k₁.f == h₁
+    @test sum(k₁.f) ≈ 1.0
+    @test info.bandwidth ≈ b₀
+
+    # prepared with known number of bins, but automatically selected bounds
+    k₂, info = kde(KDE.HistogramBinning(), v₁; nbins = 5)
+    @test k₂.x == edges2centers(range(0.5, 4.5, length = 5 + 1))
+    @test k₂.f == h₁
+    @test sum(k₂.f) ≈ 1.0
+    @test info.bandwidth ≈ b₀
+
+    # prepared with unknown number of bins, but known bounds
+    k₃, info = kde(KDE.HistogramBinning(), v₁; lo = 0, hi = 5)
+    @test k₃.x == edges2centers(range(0.0, 5.0, length = round(Int, 5 / b₀) + 1))
+    @test filter(!iszero, k₃.f) == h₁
+    @test sum(k₃.f) ≈ 1.0
+    @test info.bandwidth ≈ b₀
+
+    # prepared with unknown limits and number of bins
+    k₄, info = kde(KDE.HistogramBinning(), v₁)
+    @test filter(!iszero, k₄.f) == h₁
+    @test sum(k₄.f) ≈ 1.0
+    @test info.bandwidth ≈ b₀
+
+    # prepared using an alternative sampling density (compared to previous)
+    k₅, info = kde(KDE.HistogramBinning(), v₁; bwratio = 16)
+    @test step(k₅.x) < step(k₄.x)
+    @test filter(!iszero, k₅.f) == h₁
+    @test sum(k₅.f) ≈ 1.0
+    @test info.bandwidth ≈ b₀
+
+    # make sure errors do not occur when uniform data is provided
+    let (k, info) = kde(KDE.HistogramBinning(), ones(100))
+        @test length(k.x) == 1
+        @test isfinite(info.bandwidth) && !iszero(info.bandwidth)
+        @test sum(k.f) == 1.0
     end
 
-    @testset "Preparatory histogramming" begin
-        # raw data
-        v₁ = Float64[0.5, 1.5, 1.5, 2.5, 2.5, 2.5, 3.5, 3.5, 4.5]
-        # expected histogram (excluding zero bins when binned finer)
-        h₁ = [1, 2, 3, 2, 1] ./ length(v₁)
-        @test sum(h₁) ≈ 1.0
-        # bandwidth estimate
-        ν, σ̂ = length(v₁), std(v₁, corrected = false)
-        b₀ = σ̂ * (4//3 / ν)^(1/5)  # Silverman's rule
+    @test (@inferred kde(KDE.HistogramBinning(), [1.0, 2.0]; nbins = 2)
+           isa Tuple{KDE.UnivariateKDE{Float64,<:AbstractRange{Float64},
+                                       <:AbstractVector{Float64}},
+                     KDE.UnivariateKDEInfo{Float64}})
 
-        # prepared using known limits and number of bins
-        e₁, c₁, b₁ = _kde_prepare(v₁, 0.0, 5.0, 5)
-        @test e₁ == 0.0:1.0:5.0
-        @test c₁ == h₁
-        @test sum(c₁) ≈ 1.0
-        @test b₁ ≈ b₀
-
-        # prepared with known number of bins, but automatically selected bounds
-        e₂, c₂, b₂ = _kde_prepare(v₁, nothing, nothing, 5)
-        @test e₂ == range(0.5, 4.5, length = 5 + 1)
-        @test c₂ == h₁
-        @test sum(c₁) ≈ 1.0
-        @test b₂ ≈ b₀
-
-        # prepared with unknown number of bins, but known bounds
-        e₃, c₃, b₃ = _kde_prepare(v₁, 0.0, 5.0, nothing)
-        @test e₃ == range(0.0, 5.0, length = round(Int, 8 * 5 / b₀) + 1)
-        @test filter(!iszero, c₃) == h₁
-        @test sum(c₁) ≈ 1.0
-        @test b₃ ≈ b₀
-
-        # prepared with unknown limits and number of bins
-        e₄, c₄, b₄ = _kde_prepare(v₁, nothing, nothing, nothing)
-        @test filter(!iszero, c₄) == h₁
-        @test sum(c₁) ≈ 1.0
-        @test b₄ ≈ b₀
-
-        # prepared using an alternative sampling density (compared to previous)
-        e₅, c₅, b₅ = _kde_prepare(v₁, nothing, nothing, nothing; bwratio = 16)
-        @test step(e₅) < step(e₄)
-        @test filter(!iszero, c₅) == h₁
-        @test sum(c₅) ≈ 1.0
-        @test b₅ ≈ b₀
-
-        # make sure errors do not occur when uniform data is provided
-        let (e, c, bw) = _kde_prepare(ones(100))
-            @test length(e) == 2
-            @test iszero(last(e) - first(e))
-            @test isfinite(bw) && !iszero(bw)
-            @test sum(c) == 1.0
-        end
-    end
-
-    @testset "Type stability" begin
-        @test (@inferred _kde_prepare([1.0, 2.0], nothing, nothing, 2)
-               isa Tuple{typeof(1.0:0.5:2.0), Vector{Float64}, Float64})
-    end
 end
 
 @testset "Basic Estimate" begin

@@ -1,54 +1,130 @@
-raw"""
-    ν, σ² = _count_var(pred, v)
+import Logging: @warn
 
-Return the count `ν` and variance `σ²` of a filtered vector `v` — filtered according to the
-predicate function `pred` — simultaneously and without allocating a filtered array.
-"""
-function _count_var(pred, v)
-    T = eltype(v)
-    n = 0
-    μ = σ² = zero(T)
-    for x in v
-        !pred(x) && continue
-        n += 1
-        f = one(T) / n
-        # update online mean
-        μ₋₁, μ = μ, (one(T) - f) * μ + f * x
-        # update online variance, via Welford's algorithm
-        σ² = (one(T) - f) * σ² + f * (x - μ) * (x - μ₋₁)
-    end
-    return n, σ²
+abstract type AbstractKDE{T} end
+abstract type AbstractKDEInfo{T} end
+abstract type AbstractKDEMethod end
+abstract type BandwidthEstimator end
+
+struct UnivariateKDEInfo{T} <: AbstractKDEInfo{T}
+    npoints::Int
+    bandwidth::T
 end
 
+struct UnivariateKDE{T,R<:AbstractRange{T},V<:AbstractVector{T}} <: AbstractKDE{T}
+    x::R
+    f::V
+end
+
+# define basic iteration syntax to destructure the contents of a UnivariateKDE;
+#   note that property destructuring syntax should be preferred, but that is not available
+#   until Julia 1.8, so include this for more convenient use in older Julia versions
+Base.iterate(estim::UnivariateKDE) = iterate(estim, Val(:x))
+Base.iterate(estim::UnivariateKDE, ::Val{:x}) = (estim.x, Val(:f))
+Base.iterate(estim::UnivariateKDE, ::Val{:f}) = (estim.f, nothing)
+Base.iterate(estim::UnivariateKDE, ::Any) = nothing
+
+@noinline _warn_unused(kwargs) = @warn "Unused keyword argument(s)" kwargs=kwargs
+warn_unused(kwargs) = length(kwargs) > 0 ? _warn_unused(kwargs) : nothing
+
+between_closed(lo, hi) = ≥(lo) ∘ ≤(hi)
+_filter(data, lo, hi) = Iterators.filter(between_closed(lo, hi), data)
+
+function _extrema(data, lo, hi)
+    T = eltype(data)
+    !isnothing(lo) && !isnothing(hi) && return (T(lo), T(hi))
+    a = b = first(data)
+    for x in data
+        a = min(a, x)
+        b = max(b, x)
+    end
+    return (isnothing(lo) ? a : T(lo),
+            isnothing(hi) ? b : T(hi))
+end
+
+function _count_var(data)
+    T = eltype(data)
+    ν = 0
+    μ = μ₋₁ = σ² = zero(T)
+    for x in data
+        ν += 1
+        w = one(T) / ν
+        μ₋₁, μ = μ, (one(T) - w) * μ + w * x
+        σ² = (one(T) - w) * σ² + w * (x - μ) * (x - μ₋₁)
+    end
+    return (; count = ν, var = σ²)
+end
+
+abstract type AbstractBinningKDE <: AbstractKDEMethod end
+
 """
-    edges, counts, bw = _kde_prepare(v, lo = nothing, hi = nothing;
-                                     nbins = nothing, bwratio = 8)
+    struct HistogramBinning <: AbstractBinningKDE end
 
-Pre-process the input vector `v` into a histogram of `nbins` bins between `lo` and `hi`
-(inclusive), returning a `StepRangeLen` of bin edges (`edges`), `Vector{Int}` of bin counts
-(`counts)`, and the scalar bandwidth estimate (`bw`) estimated by Silverman's Rule.
-
-**Optional Parameters**
-
-- `lo`: The lowest edge of the histrogram range. Defaults to `minimum(v)`.
-- `hi`: The highest edge of the histogram range.Defaults to `maximum(v)`.
-- `bwratio`: The ratio of bins per bandwidth to oversample the histogram by when `nbins`
-  is determined automatically. Defaults to `8`.
-- `nbins`: The number of bins to use in the histogram. Defaults to
-  `round(Int, bwratio * (hi - lo) / bw)`.
+Base case which generates a density estimate by simply generating a histogram of the data.
 """
-function _kde_prepare(v, lo = nothing, hi = nothing, nbins = nothing;
-                      bwratio = 8)
-    T = float(eltype(v))
+struct HistogramBinning <: AbstractBinningKDE end
+
+#"""
+#    struct LinearBinning <: AbstractBinningKDE end
+#
+#Base case which generates a density estimate by linear binning.
+#
+#See also [`HistogramBinning`](@ref)
+#"""
+#struct LinearBinning <: AbstractBinningKDE end
+
+function _kdebin(::HistogramBinning, data, lo, hi, Δx, nbins)
+    T = eltype(data)
+    ν = 0
+    f = zeros(T, nbins)
+    for x in data
+        # N.B. ii is a 0-index offset
+        ii = floor(Int, (x - lo) / Δx)
+        if ii == nbins && x == hi
+            # top bin is closed rather than half-open
+            ii -= 1
+        end
+        (ii < 0 || ii >= nbins) && continue
+        f[ii + 1] += one(T)
+        ν += 1
+    end
+    for ii in eachindex(f)
+        f[ii] /= ν
+    end
+    return ν, f
+end
+
+function kde(method::AbstractBinningKDE, data;
+        lo = nothing, hi = nothing, nbins = nothing, bwratio = 1, kwargs...)
+    warn_unused(kwargs)
+    T = float(eltype(data))
 
     # determine lower and upper limits of the histogram
-    lo′ = isnothing(lo) ? minimum(v) : lo
-    hi′ = isnothing(hi) ? maximum(v) : hi
+    lo′, hi′ = _extrema(data, lo, hi)
+    # filter the data to be only in-bounds
+    v = _filter(data, lo′, hi′)
 
+    bw = bandwidth(SilvermanBandwidth(), v)
+    if isnothing(nbins)
+        nbins′ = max(1, round(Int, bwratio * (hi′ - lo′) / bw))
+    else
+        nbins′ = Int(nbins)
+        nbins′ > 0 || throw(ArgumentError("nbins must be a positive integer"))
+    end
+
+    edges = range(lo′, hi′, length = nbins′ + 1)
+    Δx = hi′ > lo′ ? step(edges) : one(lo′)  # 1 bin if histogram has zero width
+    centers = edges[2:end] .- Δx / 2
+
+    ν, f = _kdebin(method, v, lo′, hi′, Δx, nbins′)
+    estim = UnivariateKDE(centers, f)
+    info = UnivariateKDEInfo(ν, bw)
+    return estim, info
+end
+
+
+struct SilvermanBandwidth <: BandwidthEstimator end
+function bandwidth(::SilvermanBandwidth, v)
     # Estimate a nominal bandwidth using Silverman's Rule.
-    # Used for:
-    # - Automatically choosing a value of nbins, if not provided
-    # - Initializing the more accurate bandwidth optimization
     #
     # From Hansen (2009) — https://users.ssc.wisc.edu/~bhansen/718/NonParametrics1.pdf
     # for a Gaussian kernel:
@@ -58,29 +134,18 @@ function _kde_prepare(v, lo = nothing, hi = nothing, nbins = nothing;
     # - Section 2.9, letting ν = 2:
     #   - bw = σ̂ n^(-1/5) C₂(k)
     #     C₂(k) = 2 ( 8R(k)√π / 96κ₂² )^(1/5) == (4/3)^(1/5)
-    n, σ² = let pred = ≥(lo′) ∘ ≤(hi′)
-        _count_var(pred, v)
-    end
-    bw = ifelse(iszero(σ²), eps(lo′), sqrt(σ²) * (T(4 // 3) / n)^(one(T) / 5))
-
-    if isnothing(nbins)
-        nbins′ = max(1, round(Int, bwratio * (hi′ - lo′) / bw))
-    else
-        nbins > 0 || throw(ArgumentError("nbins must be a positive integer"))
-        nbins′ = Int(nbins)
-    end
-
-    # histogram the raw data points into bins which are a factor ≈ N narrower
-    # than the bandwidth of the kernel
-    # N.B. use          range(..., length = round(Int, N * (hi′ - lo′) / bw))
-    #      instead of   range(..., step = bw / N)
-    #      in order to guarantee the hi′ endpoint is the last endpoint
-    edges = range(lo′, hi′, length = nbins′ + 1)
-    # normalize the histogram such that it is a probability mass function
-    counts = histogram(v, edges) ./ n
-
-    return edges, counts, bw
+    T = float(eltype(v))
+    n, σ² = _count_var(v)
+    bw = ifelse(iszero(σ²), eps(one(T)), sqrt(σ²) * (T(4 // 3) / n)^(one(T) / 5))
+    return bw
 end
+
+
+#struct ISJBandwidth <: BandwidthEstimator end
+#function bandwidth(::ISJBandwidth, v)
+#  # not yet implemented
+#end
+
 
 """
     x, f = kde(v; lo = nothing, hi = nothing, nbins = nothing,
@@ -125,19 +190,16 @@ density estimate:
   In: _arXiv e-prints_ (Oct. 2019).
   arXiv: [1910.13970 \\[astro-ph.IM\\]](https://arxiv.org/abs/1910.13970)
 """
-function kde(v;
+function kde(data;
              lo = nothing, hi = nothing, nbins = nothing,
              bandwidth = nothing, bwratio = 8,
              opt_normalize = true, opt_linearboundary = true, opt_multiply = true
             )
-    edges, counts, bw_s = _kde_prepare(v, lo, hi, nbins; bwratio = bwratio)
-    bw = isnothing(bandwidth) ? bw_s : bandwidth
+    estim, info = kde(HistogramBinning(), data; lo, hi, nbins, bwratio)
+    counts = estim.f
+    Δx = step(estim.x)
+    bw = isnothing(bandwidth) ? info.bandwidth : bandwidth
 
-    # bin centers instead of the bin edges
-    Δx = let Δx = step(edges)
-        ifelse(iszero(Δx), bw, Δx)
-    end
-    centers = edges[2:end] .- Δx / 2
     # make sure the kernel axis is centered on zero
     nn = ceil(Int, 4bw / Δx)
     xx = range(-nn * Δx, nn * Δx, step = Δx)
@@ -194,5 +256,5 @@ function kde(v;
         f̂ .*= g
     end
 
-    return centers, f̂
+    return UnivariateKDE(estim.x, f̂)
 end
