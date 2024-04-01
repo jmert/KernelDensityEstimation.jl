@@ -5,14 +5,15 @@ abstract type AbstractKDEInfo{T} end
 abstract type AbstractKDEMethod end
 abstract type BandwidthEstimator end
 
-struct UnivariateKDEInfo{T} <: AbstractKDEInfo{T}
-    npoints::Int
-    bandwidth::T
-end
-
 struct UnivariateKDE{T,R<:AbstractRange{T},V<:AbstractVector{T}} <: AbstractKDE{T}
     x::R
     f::V
+end
+
+struct UnivariateKDEInfo{T,K<:UnivariateKDE{T}} <: AbstractKDEInfo{T}
+    npoints::Int
+    bandwidth::T
+    kernel::K
 end
 
 # define basic iteration syntax to destructure the contents of a UnivariateKDE;
@@ -95,7 +96,8 @@ function _kdebin(::HistogramBinning, data, lo, hi, Δx, nbins)
 end
 
 function kde(method::AbstractBinningKDE, data;
-        lo = nothing, hi = nothing, nbins = nothing, bwratio = 1, kwargs...)
+        lo = nothing, hi = nothing, nbins = nothing, bandwidth = nothing, bwratio = 1,
+        kwargs...)
     warn_unused(kwargs)
     T = float(eltype(data))
 
@@ -104,7 +106,7 @@ function kde(method::AbstractBinningKDE, data;
     # filter the data to be only in-bounds
     v = _filter(data, lo′, hi′)
 
-    bw = bandwidth(SilvermanBandwidth(), v)
+    bw = !isnothing(bandwidth) ? bandwidth : estimate_bandwidth(SilvermanBandwidth(), v)
     if isnothing(nbins)
         nbins′ = max(1, round(Int, bwratio * (hi′ - lo′) / bw))
     else
@@ -118,13 +120,125 @@ function kde(method::AbstractBinningKDE, data;
 
     ν, f = _kdebin(method, v, lo′, hi′, Δx, nbins′)
     estim = UnivariateKDE(centers, f)
-    info = UnivariateKDEInfo(ν, bw)
+    kernel = UnivariateKDE(range(zero(T), zero(T), length = 1), [one(T)])
+    info = UnivariateKDEInfo(ν, bw, kernel)
+    return estim, info
+end
+
+"""
+    BasicKDE{M<:AbstractBinningKDE} <: AbstractKDEMethod
+
+**Pipeline:** `BasicKDE` → [`AbstractBinningKDE`](@ref)
+"""
+struct BasicKDE{M<:AbstractBinningKDE} <: AbstractKDEMethod
+    binning::M
+end
+BasicKDE() = BasicKDE(HistogramBinning())
+
+function kde(method::BasicKDE, data; bwratio = 2, kwargs...)
+    binned, info = kde(method.binning, data; bwratio = bwratio, kwargs...)
+    return kde(method, binned, info)
+end
+function kde(method::BasicKDE, binned::UnivariateKDE, info::UnivariateKDEInfo)
+    x, f = binned
+    bw = info.bandwidth
+    Δx = step(x)
+
+    # make sure the kernel axis is centered on zero
+    nn = ceil(Int, 4bw / Δx)
+    xx = range(-nn * Δx, nn * Δx, step = Δx)
+
+    # construct the convolution kernel
+    # N.B. Mathematically normalizing the kernel, such as with
+    #        kernel = exp.(-(xx ./ bw) .^ 2 ./ 2) .* (Δx / bw / sqrt(2T(π)))
+    #      breaks down when bw << Δx. Instead of trying to work around that, just take the
+    #      easy route and just post-normalize a simpler calculation.
+    kernel = exp.(-(xx ./ bw) .^ 2 ./ 2)
+    kernel ./= sum(kernel)
+
+    # convolve the data with the kernel to construct a density estimate
+    f̂ = conv(f, kernel, :same)
+    estim = UnivariateKDE(x, f̂)
+    info = UnivariateKDEInfo(info.npoints, info.bandwidth,
+                             UnivariateKDE(xx, kernel))
     return estim, info
 end
 
 
+"""
+    LinearBoundaryKDE{M<:AbstractBinningKDE} <: AbstractKDEMethod
+
+**Pipeline:** `LinearBoundaryKDE` → [`BasicKDE`](@ref) → [`AbstractBinningKDE`](@ref)
+"""
+struct LinearBoundaryKDE{M<:AbstractBinningKDE} <: AbstractKDEMethod
+    binning::M
+end
+LinearBoundaryKDE() = LinearBoundaryKDE(HistogramBinning())
+
+function kde(method::LinearBoundaryKDE, data; bwratio = 8, kwargs...)
+    binned, info = kde(method.binning, data; bwratio = bwratio, kwargs...)
+    return kde(method, binned, info)
+end
+function kde(method::LinearBoundaryKDE, binned::UnivariateKDE, info::UnivariateKDEInfo)
+    h = copy(binned.f)
+    (x, f), info = kde(BasicKDE(method.binning), binned, info)
+
+    # apply a linear boundary correction
+    # see Eqn 12 & 16 of Lewis (2019)
+    #   N.B. the denominator of A₀ should have [W₂]⁻¹ instead of W₂
+    kx, K = info.kernel
+    K̂ = plan_conv(f, K)
+
+    Θ = fill!(similar(f), true)
+    μ₀ = conv(Θ, K̂, :same)
+
+    K = K .* kx
+    replan_conv!(K̂, K)
+    μ₁ = conv(Θ, K̂, :same)
+    f′ = conv(h, K̂, :same)
+
+    K .*= kx
+    replan_conv!(K̂, K)
+    μ₂ = conv(Θ, K̂, :same)
+
+    # function to force f̂ to be positive
+    # see Eqn. 17 of Lewis (2019)
+    pos(f₁, f₂) = iszero(f₁) ? zero(f₁) : f₁ * exp(f₂ / f₁ - one(f₁))
+    f .= pos.(f ./ μ₀, (μ₂ .* f .- μ₁ .* f′) ./ (μ₀ .* μ₂ .- μ₁.^2))
+
+    return UnivariateKDE(x, f), info
+end
+
+
+struct MultiplicativeBiasKDE{B<:AbstractBinningKDE,M<:AbstractKDEMethod} <: AbstractKDEMethod
+    binning::B
+    method::M
+end
+MultiplicativeBiasKDE() = MultiplicativeBiasKDE(HistogramBinning(), LinearBoundaryKDE())
+
+
+function kde(method::MultiplicativeBiasKDE, data; bwratio = 8, kwargs...)
+    # generate pilot KDE
+    base, info = kde(method.binning, data; bwratio = bwratio, kwargs...)
+    pilot, info = kde(method.method, base, info)
+
+    # use the pilot KDE to flatten the unsmoothed histogram
+    nonzero(x) = iszero(x) ? one(x) : x
+    pilot.f .= nonzero.(pilot.f)
+    base.f ./= pilot.f
+
+    # then run KDE again on the flattened distribution
+    iter, _ = kde(method.method, base, info)
+
+    # unflatten and return
+    iter.f .*= pilot.f
+    return iter, info
+end
+
+
+
 struct SilvermanBandwidth <: BandwidthEstimator end
-function bandwidth(::SilvermanBandwidth, v)
+function estimate_bandwidth(::SilvermanBandwidth, v)
     # Estimate a nominal bandwidth using Silverman's Rule.
     #
     # From Hansen (2009) — https://users.ssc.wisc.edu/~bhansen/718/NonParametrics1.pdf
