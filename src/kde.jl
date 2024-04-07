@@ -61,31 +61,61 @@ abstract type AbstractBinningKDE <: AbstractKDEMethod end
     struct HistogramBinning <: AbstractBinningKDE end
 
 Base case which generates a density estimate by simply generating a histogram of the data.
+
+See also [`LinearBinning`](@ref)
 """
 struct HistogramBinning <: AbstractBinningKDE end
 
-#"""
-#    struct LinearBinning <: AbstractBinningKDE end
-#
-#Base case which generates a density estimate by linear binning.
-#
-#See also [`HistogramBinning`](@ref)
-#"""
-#struct LinearBinning <: AbstractBinningKDE end
+"""
+    struct LinearBinning <: AbstractBinningKDE end
+
+Base case which generates a density estimate by linear binning.
+
+See also [`HistogramBinning`](@ref)
+"""
+struct LinearBinning <: AbstractBinningKDE end
 
 function _kdebin(::HistogramBinning, data, lo, hi, Δx, nbins)
     T = eltype(data)
     ν = 0
     f = zeros(T, nbins)
     for x in data
+        lo ≤ x ≤ hi || continue  # skip out-of-bounds elements
+
+        # calculate bin index; subtraction of (x == hi) makes the last bin a closed bin
+        zz = (x - lo) / Δx
+        ii = unsafe_trunc(Int, zz) - (x == hi)
         # N.B. ii is a 0-index offset
-        ii = floor(Int, (x - lo) / Δx)
-        if ii == nbins && x == hi
-            # top bin is closed rather than half-open
-            ii -= 1
-        end
-        (ii < 0 || ii >= nbins) && continue
+
         f[ii + 1] += one(T)
+        ν += 1
+    end
+    w = inv(ν * Δx)
+    for ii in eachindex(f)
+        f[ii] *= w
+    end
+    return ν, f
+end
+
+function _kdebin(::LinearBinning, data, lo, hi, Δx, nbins)
+    T = eltype(data)
+    ν = 0
+    f = zeros(T, nbins)
+    for x in data
+        lo ≤ x ≤ hi || continue  # skip out-of-bounds elements
+
+        # calculate bin index; subtraction of (x == hi) makes the last bin a closed bin
+        zz = (x - lo) / Δx
+        ii = unsafe_trunc(Int, zz) - (x == hi)
+        # N.B. ii is a 0-index offset
+
+        ww = (zz - ii) - one(T) / 2  # signed distance from the bin center
+        off = ifelse(signbit(ww), -1, 1)  # adjascent bin direction
+        jj = clamp(ii + off, 0, nbins - 1)  # adj. bin, limited to in-bounds where outer half-bins do not share
+
+        ww = abs(ww)  # weights are positive
+        f[ii + 1] += one(T) - ww
+        f[jj + 1] += ww
         ν += 1
     end
     w = inv(ν * Δx)
