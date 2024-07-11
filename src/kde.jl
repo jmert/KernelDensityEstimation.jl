@@ -1,5 +1,48 @@
 import Logging: @warn
 
+"""
+```julia
+@enum T Closed Open ClosedLeft ClosedRight
+const OpenLeft = ClosedRight
+const OpenRight = ClosedLeft
+```
+
+Enumeration to describe the desired boundary conditions of the domain of the kernel
+density estimate ``K``.
+For some given data ``d ∈ [a, b]``, the cover conditions have the following impact:
+
+- `Closed`: The domain ``K ∈ [a, b]`` is used directly as the bounds of the binning.
+- `Open`: The desired domain ``K ∈ (-∞, +∞)`` is effectively achieved by widening the
+  bounds of the data by the size of the finite convolution kernel.
+  Specifically, the binning is defined over the range ``[a - 4σ, b + 4σ]`` where ``σ``
+  is the bandwidth of the Gaussian convolution kernel.
+- `ClosedLeft`: The left half-closed interval ``K ∈ [a, +∞)`` is used as the bounds for
+  binning by adjusting the upper limit to the range ``[a, b + 4σ]``.
+  The equivalent alias `OpenRight` may also be used.
+- `ClosedRight`: The right half-closed interval ``K ∈ (-∞, b]`` is used as the bounds for
+  binning by adjusting the lower limit to the range ``[a - 4σ, b]``.
+  The equivalent alias `OpenLeft` may also be used.
+"""
+baremodule Cover
+    import ..Base.@enum
+
+    export Closed, Open, ClosedLeft, ClosedRight, OpenLeft, OpenRight, to_cover
+
+    @enum T Closed Open ClosedLeft ClosedRight
+    const OpenLeft = ClosedRight
+    const OpenRight = ClosedLeft
+
+    to_cover(x::Cover.T) = x
+    to_cover(x::Symbol) = x === :open ? Open :
+                          x === :closed ? Closed :
+                          x === :closedleft ? ClosedLeft :
+                          x === :openright ? ClosedLeft :
+                          x === :closedright ? ClosedRight :
+                          x === :openleft ? ClosedRight :
+                          throw(ArgumentError("Unknown cover option: $x"))
+end
+using .Cover
+
 abstract type AbstractKDE{T} end
 abstract type AbstractKDEInfo{T} end
 abstract type AbstractKDEMethod end
@@ -14,6 +57,7 @@ struct UnivariateKDEInfo{T,K<:UnivariateKDE{T}} <: AbstractKDEInfo{T}
     npoints::Int
     bandwidth::T
     kernel::K
+    cover::Cover.T
 end
 
 # define basic iteration syntax to destructure the contents of a UnivariateKDE;
@@ -127,7 +171,7 @@ end
 
 function kde(method::AbstractBinningKDE, data;
         lo = nothing, hi = nothing, nbins = nothing, bandwidth = nothing, bwratio = 1,
-        kwargs...)
+        cover::Cover.T = Open, kwargs...)
     warn_unused(kwargs)
     T = float(eltype(data))
 
@@ -144,6 +188,9 @@ function kde(method::AbstractBinningKDE, data;
         nbins′ > 0 || throw(ArgumentError("nbins must be a positive integer"))
     end
 
+    lo′ -= (cover == Closed || cover == ClosedLeft) ? zero(T) : 4bw
+    hi′ += (cover == Closed || cover == ClosedRight) ? zero(T) : 4bw
+
     edges = range(lo′, hi′, length = nbins′ + 1)
     Δx = hi′ > lo′ ? step(edges) : one(lo′)  # 1 bin if histogram has zero width
     centers = edges[2:end] .- Δx / 2
@@ -151,7 +198,7 @@ function kde(method::AbstractBinningKDE, data;
     ν, f = _kdebin(method, v, lo′, hi′, Δx, nbins′)
     estim = UnivariateKDE(centers, f)
     kernel = UnivariateKDE(range(zero(T), zero(T), length = 1), [one(T)])
-    info = UnivariateKDEInfo(ν, bw, kernel)
+    info = UnivariateKDEInfo(ν, bw, kernel, cover)
     return estim, info
 end
 
@@ -190,7 +237,7 @@ function kde(method::BasicKDE, binned::UnivariateKDE, info::UnivariateKDEInfo)
     f̂ = conv(f, kernel, :same)
     estim = UnivariateKDE(x, f̂)
     info = UnivariateKDEInfo(info.npoints, info.bandwidth,
-                             UnivariateKDE(xx, kernel))
+                             UnivariateKDE(xx, kernel), info.cover)
     return estim, info
 end
 
@@ -293,33 +340,25 @@ end
 
 
 """
-    x, f = kde(v; lo = nothing, hi = nothing, nbins = nothing,
-               bandwidth = nothing, bwratio = 8,
-               opt_normalize = true
-              )
+    estim = kde(v; method = MultiplicativeBiasKDE()
+                lo = nothing, hi = nothing, nbins = nothing,
+                bandwidth = nothing, bwratio = 8, cover = :open)
 
 Calculate a discrete kernel density estimate (KDE) `f(x)` of the sample distribution of `v`.
 
 The KDE is constructed by first histogramming the input `v` into `nbins` bins with
 outermost bin edges spanning `lo` to `hi`, which default to the minimum and maximum of
-`v`, respectively, if not provided. The histogram is then convolved with a Gaussian
-distribution with standard deviation `bandwidth`. The `bwratio` parameter is used to
-calculate `nbins` when it is not given and corresponds to the ratio of the bandwidth to
-the width of each histogram bin.
+`v`, respectively, if not provided. The span of the histogram may be expanded outward
+based on the value of `cover` (dictating whether the boundaries are open or closed).
+The histogram is then convolved with a Gaussian distribution with standard deviation
+`bandwidth`. The `bwratio` parameter is used to calculate `nbins` when it is not given and
+corresponds to the ratio of the bandwidth to the width of each histogram bin.
 
-This simple KDE can then be post-processed in a number of ways to improve the returned
-density estimate:
-
-- `opt_normalize` — If `true`, the KDE is renormalized to account for the convolutions
-  interaction with implicit zeros beyond the bounds of the low and high edges of the
-  histogram.
-
-- `opt_linearboundary` — If `true`, corrections are applied to account for non-zero
-  slope at the edges of the KDE. Note that when this correction is enabled,
-  `opt_normalize` is effectively ignored since overall normalization is an implicit part
-  of this correction.
-
-- `opt_multiply` —
+Acceptable values of `cover` are:
+- `:open` or [`Open`](@ref Cover)
+- `:closed` or [`Closed`](@ref Cover)
+- `:closedleft`, `:openright`, [`ClosedLeft`](@ref Cover), or [`OpenRight`](@ref Cover)
+- `:closedright`, `:openleft`, [`ClosedRight`](@ref Cover), or [`OpenLeft`](@ref Cover)
 
 # Extended help
 
@@ -336,70 +375,13 @@ density estimate:
   arXiv: [1910.13970 \\[astro-ph.IM\\]](https://arxiv.org/abs/1910.13970)
 """
 function kde(data;
+             method::AbstractKDEMethod = MultiplicativeBiasKDE(),
              lo = nothing, hi = nothing, nbins = nothing,
-             bandwidth = nothing, bwratio = 8,
-             opt_normalize = true, opt_linearboundary = true, opt_multiply = true
+             bandwidth = nothing, bwratio = 8, cover = :open
             )
-    estim, info = kde(HistogramBinning(), data; lo, hi, nbins, bwratio)
-    counts = estim.f
-    Δx = step(estim.x)
-    bw = isnothing(bandwidth) ? info.bandwidth : bandwidth
-
-    # make sure the kernel axis is centered on zero
-    nn = ceil(Int, 4bw / Δx)
-    xx = range(-nn * Δx, nn * Δx, step = Δx)
-
-    function _kde(counts)
-        # construct the convolution kernel
-        # N.B. Mathematically normalizing the kernel, such as with
-        #        kernel = exp.(-(xx ./ bw) .^ 2 ./ 2) .* (Δx / bw / sqrt(2T(π)))
-        #      breaks down when bw << Δx. Instead of trying to work around that, just take the
-        #      easy route and just post-normalize a simpler calculation.
-        kernel = exp.(-(xx ./ bw) .^ 2 ./ 2)
-        kernel ./= sum(kernel)
-
-        # convolve the data with the kernel to construct a density estimate
-        K̂ = plan_conv(counts, kernel)
-        f₀ = conv(counts, K̂, :same)
-
-        if opt_normalize || opt_linearboundary
-            # normalize the estimate, which accounts for implicit zeros outside the histogram
-            # bounds
-            Θ = fill!(similar(counts), true)
-            μ₀ = conv(Θ, K̂, :same)
-            f₀ ./= μ₀
-        end
-        if opt_linearboundary
-            # apply a linear boundary correction
-            # see Eqn 12 & 16 of Lewis (2019)
-            #   N.B. the denominator of A₀ should have [W₂]⁻¹ instead of W₂
-            kernel .*= xx
-            replan_conv!(K̂, kernel)
-            μ₁ = conv(Θ, K̂, :same)
-            f′ = conv(counts, K̂, :same)
-
-            kernel .*= xx
-            replan_conv!(K̂, kernel)
-            μ₂ = conv(Θ, K̂, :same)
-            μ₀₂ = (μ₂ .*= μ₀)
-
-            # function to force f̂ to be positive
-            # see Eqn. 17 of Lewis (2019)
-            pos(f₁, f₂) = iszero(f₁) ? zero(f₁) : f₁ * exp(f₂ / f₁ - one(f₁))
-            f̂ = pos.(f₀, (μ₀₂ .* f₀ .- μ₁ .* f′) ./ (μ₀₂ .- μ₁.^2))
-        else
-            f̂ = f₀
-        end
-        return f̂
-    end
-
-    f̂ = _kde(counts)
-    if opt_multiply
-        nonzero(x) = iszero(x) ? one(x) : x
-        g = nonzero.(f̂)
-        f̂ = _kde(counts ./ g)
-        f̂ .*= g
-    end
-
-    return UnivariateKDE(estim.x, f̂)
+    cover = to_cover(cover)
+    estim, _ = kde(method, data; lo = lo, hi = hi, nbins = nbins,
+                   bandwidth = bandwidth, bwratio = bwratio, cover = to_cover(cover))
+    estim.f ./= sum(estim.f) * step(estim.x)
+    return estim
 end
