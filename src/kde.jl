@@ -180,7 +180,7 @@ function kde(method::AbstractBinningKDE, data;
     # filter the data to be only in-bounds
     v = _filter(data, lo′, hi′)
 
-    bw = !isnothing(bandwidth) ? bandwidth : estimate_bandwidth(SilvermanBandwidth(), v)
+    bw = !isnothing(bandwidth) ? T(bandwidth) : estimate_bandwidth(SilvermanBandwidth(), v)
     if isnothing(nbins)
         nbins′ = max(1, round(Int, bwratio * (hi′ - lo′) / bw))
     else

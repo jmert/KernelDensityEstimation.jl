@@ -107,6 +107,16 @@ end
         @test sum(k.f) * step(k.x) == 1.0
     end
 
+    # make sure the bandwidth argument is converted to the appropriate common type
+    _, info = kde(KDE.HistogramBinning(), v₁)
+    @test info.bandwidth isa Float64
+    _, info = kde(KDE.HistogramBinning(), v₁; bandwidth = 1)  # explicit but not same type
+    @test info.bandwidth isa Float64
+    _, info = kde(KDE.HistogramBinning(), Float32.(v₁))
+    @test info.bandwidth isa Float32
+    _, info = kde(KDE.HistogramBinning(), Float32.(v₁); bandwidth = 1)
+    @test info.bandwidth isa Float32
+
     @test (@inferred kde(KDE.HistogramBinning(), [1.0, 2.0]; nbins = 2)
            isa Tuple{KDE.UnivariateKDE{Float64,<:AbstractRange{Float64},
                                        <:AbstractVector{Float64}},
