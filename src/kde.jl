@@ -100,11 +100,21 @@ struct UnivariateKDE{T,R<:AbstractRange{T},V<:AbstractVector{T}} <: AbstractKDE{
     f::V
 end
 
-struct UnivariateKDEInfo{T,K<:UnivariateKDE{T}} <: AbstractKDEInfo{T}
+"""
+    UnivariateKDEInfo{T} <: AbstractKDEInfo{T}
+
+## Fields
+- `npoints::Int`: The number of values in the original data vector.
+- `cover::`[`Cover.T`](@ref Cover): The boundary condition assumed in the density estimation
+  process.
+- `bandwidth::T`: The bandwidth of the convolution `kernel`.
+- `kernel::UnivariateKDE{T}`: The convolution kernel used to process the density estimate.
+"""
+Base.@kwdef struct UnivariateKDEInfo{T} <: AbstractKDEInfo{T}
     npoints::Int
-    bandwidth::T
-    kernel::K
     cover::Cover.T
+    bandwidth::T
+    kernel::UnivariateKDE{T}
 end
 
 # define basic iteration syntax to destructure the contents of a UnivariateKDE;
@@ -243,7 +253,7 @@ function kde(method::AbstractBinningKDE, data;
     ν, f = _kdebin(method, v, lo′, hi′, Δx, nbins′)
     estim = UnivariateKDE(centers, f)
     kernel = UnivariateKDE(range(zero(T), zero(T), length = 1), [one(T)])
-    info = UnivariateKDEInfo(ν, bw, kernel, cover)
+    info = UnivariateKDEInfo(; npoints = ν, cover, bandwidth = bw, kernel)
     return estim, info
 end
 
@@ -255,8 +265,8 @@ kernel truncated at its ``±4σ`` bounds.
 
 ## Fields and Constructor Keywords
 
-- `binning::AbstractBinningKDE`: The binning type to apply to a data vector as the first
-  step of density estimation.
+- `binning::`[`AbstractBinningKDE`](@ref): The binning type to apply to a data vector as the
+  first step of density estimation.
   Defaults to [`HistogramBinning()`](@ref).
 """
 Base.@kwdef struct BasicKDE{M<:AbstractBinningKDE} <: AbstractKDEMethod
@@ -287,8 +297,8 @@ function kde(::BasicKDE, binned::UnivariateKDE, info::UnivariateKDEInfo)
     # convolve the data with the kernel to construct a density estimate
     f̂ = conv(f, kernel, :same)
     estim = UnivariateKDE(x, f̂)
-    info = UnivariateKDEInfo(info.npoints, info.bandwidth,
-                             UnivariateKDE(xx, kernel), info.cover)
+    info = UnivariateKDEInfo(; info.npoints, info.bandwidth, info.cover,
+                               kernel = UnivariateKDE(xx, kernel))
     return estim, info
 end
 
@@ -304,8 +314,8 @@ normalization corrections which tend to leave the boundary too flat).
 
 ## Fields and Constructor Keywords
 
-- `binning::AbstractBinningKDE`: The binning type to apply to a data vector as the first
-  step of density estimation.
+- `binning::`[`AbstractBinningKDE`](@ref): The binning type to apply to a data vector as the
+  first step of density estimation.
   Defaults to [`HistogramBinning()`](@ref).
 """
 Base.@kwdef struct LinearBoundaryKDE{M<:AbstractBinningKDE} <: AbstractKDEMethod
@@ -358,13 +368,13 @@ of density estimation (since a perfectly uniform distribution cannot be broadene
 
 ## Fields and Constructor Keywords
 
-- `binning::AbstractBinningKDE`: The binning type to apply to a data vector as the first
-  step of density estimation.
-  This defaults to [`HistogramBinning()`](@ref).
+- `binning::`[`AbstractBinningKDE`](@ref): The binning type to apply to a data vector as the
+  first step of density estimation.
+  Defaults to [`HistogramBinning()`](@ref).
 
-- `method::AbstractKDEMethod`: The KDE method to use for the pilot and iterative density
-  estimation.
-  This defaults to [`LinearBoundaryKDE()`](@ref).
+- `method::`[`AbstractKDEMethod`](@ref): The KDE method to use for the pilot and iterative
+  density estimation.
+  Defaults to [`LinearBoundaryKDE()`](@ref).
 
 Note that if the given `method` has a configurable binning type, it is ignored in favor
 of the explicit `binning` chosen.

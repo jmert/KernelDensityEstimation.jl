@@ -1,0 +1,8 @@
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+DocumenterCitations = "daee34ce-89f3-4625-b898-19384cb65244"
+KernelDensityEstimation = "e46ec5f4-66dc-4371-a668-81bd92d19d7d"
+
+[compat]
+julia = "1.6"
+Documenter = "1.3"
