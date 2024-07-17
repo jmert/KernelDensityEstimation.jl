@@ -43,11 +43,58 @@ baremodule Cover
 end
 using .Cover
 
-abstract type AbstractKDE{T} end
-abstract type AbstractKDEInfo{T} end
-abstract type AbstractKDEMethod end
-abstract type BandwidthEstimator end
+"""
+    AbstractKDE{T}
 
+Abstract supertype of kernel density estimates.
+
+See also [`UnivariateKDE`](@ref)
+"""
+abstract type AbstractKDE{T} end
+
+"""
+    AbstractKDEInfo{T}
+
+Abstract supertype of auxiliary information used during kernel density estimation.
+
+See also [`UnivariateKDEInfo`](@ref)
+"""
+abstract type AbstractKDEInfo{T} end
+
+"""
+    AbstractKDEMethod
+
+The abstract supertype of all kernel density estimation methods, including the data
+binning process (see [`AbstractBinningKDE`](@ref)) and subsequent density estimation
+techniques (such as [`BasicKDE`](@ref)).
+"""
+abstract type AbstractKDEMethod end
+
+"""
+    AbstractBinningKDE <: AbstractKDEMethod
+
+The abstract supertype of data binning methods which are the first step in the density
+estimation process.
+The two supported binning methods are [`HistogramBinning`](@ref) and
+[`LinearBinning`](@ref).
+"""
+abstract type AbstractBinningKDE <: AbstractKDEMethod end
+
+"""
+    AbstractBandwidthEstimator
+
+Abstract supertype of kernel bandwidth estimation techniques.
+"""
+abstract type AbstractBandwidthEstimator end
+
+"""
+    UnivariateKDE{T,R<:AbstractRange{T},V<:AbstractVector{T}} <: AbstractKDE{T}
+
+## Fields
+
+- `x::R`: The locations (bin centers) of the corresponding density estimate values.
+- `f::V`: The density estimate values.
+"""
 struct UnivariateKDE{T,R<:AbstractRange{T},V<:AbstractVector{T}} <: AbstractKDE{T}
     x::R
     f::V
@@ -66,7 +113,7 @@ end
 Base.iterate(estim::UnivariateKDE) = iterate(estim, Val(:x))
 Base.iterate(estim::UnivariateKDE, ::Val{:x}) = (estim.x, Val(:f))
 Base.iterate(estim::UnivariateKDE, ::Val{:f}) = (estim.f, nothing)
-Base.iterate(estim::UnivariateKDE, ::Any) = nothing
+Base.iterate(::UnivariateKDE, ::Any) = nothing
 
 @noinline _warn_unused(kwargs) = @warn "Unused keyword argument(s)" kwargs=kwargs
 warn_unused(kwargs) = length(kwargs) > 0 ? _warn_unused(kwargs) : nothing
@@ -99,12 +146,10 @@ function _count_var(data)
     return (; count = ν, var = σ²)
 end
 
-abstract type AbstractBinningKDE <: AbstractKDEMethod end
-
 """
     struct HistogramBinning <: AbstractBinningKDE end
 
-Base case which generates a density estimate by simply generating a histogram of the data.
+Base case which generates a density estimate by histogramming the data.
 
 See also [`LinearBinning`](@ref)
 """
@@ -113,7 +158,7 @@ struct HistogramBinning <: AbstractBinningKDE end
 """
     struct LinearBinning <: AbstractBinningKDE end
 
-Base case which generates a density estimate by linear binning.
+Base case which generates a density estimate by linear binning of the data.
 
 See also [`HistogramBinning`](@ref)
 """
@@ -205,18 +250,24 @@ end
 """
     BasicKDE{M<:AbstractBinningKDE} <: AbstractKDEMethod
 
-**Pipeline:** `BasicKDE` → [`AbstractBinningKDE`](@ref)
+A baseline density estimation technique which convolves a binned dataset with a Gaussian
+kernel truncated at its ``±4σ`` bounds.
+
+## Fields and Constructor Keywords
+
+- `binning::AbstractBinningKDE`: The binning type to apply to a data vector as the first
+  step of density estimation.
+  Defaults to [`HistogramBinning()`](@ref).
 """
-struct BasicKDE{M<:AbstractBinningKDE} <: AbstractKDEMethod
-    binning::M
+Base.@kwdef struct BasicKDE{M<:AbstractBinningKDE} <: AbstractKDEMethod
+    binning::M = HistogramBinning()
 end
-BasicKDE() = BasicKDE(HistogramBinning())
 
 function kde(method::BasicKDE, data; bwratio = 2, kwargs...)
     binned, info = kde(method.binning, data; bwratio = bwratio, kwargs...)
     return kde(method, binned, info)
 end
-function kde(method::BasicKDE, binned::UnivariateKDE, info::UnivariateKDEInfo)
+function kde(::BasicKDE, binned::UnivariateKDE, info::UnivariateKDEInfo)
     x, f = binned
     bw = info.bandwidth
     Δx = step(x)
@@ -245,12 +296,21 @@ end
 """
     LinearBoundaryKDE{M<:AbstractBinningKDE} <: AbstractKDEMethod
 
-**Pipeline:** `LinearBoundaryKDE` → [`BasicKDE`](@ref) → [`AbstractBinningKDE`](@ref)
+A method of KDE which applies the linear boundary correction of [Jones1996](@citet) as
+described in [Lewis2019](@citet) after [`BasicKDE`](@ref) density estimation.
+This correction primarily impacts the KDE near a closed boundary (see [`Cover`](@ref)) and
+has the effect of improving any non-zero gradient at the boundary (when compared to
+normalization corrections which tend to leave the boundary too flat).
+
+## Fields and Constructor Keywords
+
+- `binning::AbstractBinningKDE`: The binning type to apply to a data vector as the first
+  step of density estimation.
+  Defaults to [`HistogramBinning()`](@ref).
 """
-struct LinearBoundaryKDE{M<:AbstractBinningKDE} <: AbstractKDEMethod
-    binning::M
+Base.@kwdef struct LinearBoundaryKDE{M<:AbstractBinningKDE} <: AbstractKDEMethod
+    binning::M = HistogramBinning()
 end
-LinearBoundaryKDE() = LinearBoundaryKDE(HistogramBinning())
 
 function kde(method::LinearBoundaryKDE, data; bwratio = 8, kwargs...)
     binned, info = kde(method.binning, data; bwratio = bwratio, kwargs...)
@@ -287,11 +347,32 @@ function kde(method::LinearBoundaryKDE, binned::UnivariateKDE, info::UnivariateK
 end
 
 
-struct MultiplicativeBiasKDE{B<:AbstractBinningKDE,M<:AbstractKDEMethod} <: AbstractKDEMethod
-    binning::B
-    method::M
+"""
+    MulitplicativeBiasKDE{B<:AbstractBinningKDE,M<:AbstractKDEMethod} <: AbstractKDEMethod
+
+A method of KDE which applies the multiplicative bias correction described in
+[Lewis2019](@citet).
+This correction is designed to reduce the broadening of peaks inherent to kernel
+convolution by using a pilot KDE to flatten the distribution and run a second iteration
+of density estimation (since a perfectly uniform distribution cannot be broadened further).
+
+## Fields and Constructor Keywords
+
+- `binning::AbstractBinningKDE`: The binning type to apply to a data vector as the first
+  step of density estimation.
+  This defaults to [`HistogramBinning()`](@ref).
+
+- `method::AbstractKDEMethod`: The KDE method to use for the pilot and iterative density
+  estimation.
+  This defaults to [`LinearBoundaryKDE()`](@ref).
+
+Note that if the given `method` has a configurable binning type, it is ignored in favor
+of the explicit `binning` chosen.
+"""
+Base.@kwdef struct MultiplicativeBiasKDE{B<:AbstractBinningKDE,M<:AbstractKDEMethod} <: AbstractKDEMethod
+    binning::B = HistogramBinning()
+    method::M = LinearBoundaryKDE()
 end
-MultiplicativeBiasKDE() = MultiplicativeBiasKDE(HistogramBinning(), LinearBoundaryKDE())
 
 
 function kde(method::MultiplicativeBiasKDE, data; bwratio = 8, kwargs...)
@@ -313,8 +394,20 @@ function kde(method::MultiplicativeBiasKDE, data; bwratio = 8, kwargs...)
 end
 
 
+"""
+    SilvermanBandwidth <: AbstractBandwidthEstimator
 
-struct SilvermanBandwidth <: BandwidthEstimator end
+Estimates the necessary bandwidth of a vector of data ``v`` using Silverman's Rule for
+a Gaussian smoothing kernel:
+```math
+    h = \\left(\\frac{4}{3n}\\right)^{1/5} σ̂
+```
+where ``n`` is the length of ``v`` and ``σ̂`` is its sample variance.
+
+## References
+- [Hansen2009](@citet)
+"""
+struct SilvermanBandwidth <: AbstractBandwidthEstimator end
 function estimate_bandwidth(::SilvermanBandwidth, v)
     # Estimate a nominal bandwidth using Silverman's Rule.
     #
@@ -333,11 +426,10 @@ function estimate_bandwidth(::SilvermanBandwidth, v)
 end
 
 
-#struct ISJBandwidth <: BandwidthEstimator end
+#struct ISJBandwidth <: AbstractBandwidthEstimator end
 #function bandwidth(::ISJBandwidth, v)
 #  # not yet implemented
 #end
-
 
 """
     estim = kde(v; method = MultiplicativeBiasKDE()
@@ -354,6 +446,14 @@ The histogram is then convolved with a Gaussian distribution with standard devia
 `bandwidth`. The `bwratio` parameter is used to calculate `nbins` when it is not given and
 corresponds to the ratio of the bandwidth to the width of each histogram bin.
 
+The bandwidth is estimated using Silverman's rule ([`SilvermanBandwidth`](@ref)) if no
+desired bandwidth is given.
+
+The default `method` of density estimation uses the [`MultiplicativeBiasKDE`](@ref)
+pipeline, which includes corrections for boundary effects and peak broadening which should
+be an acceptable default in many cases, but a different [`AbstractKDEMethod`](@ref) can
+be chosen if necessary.
+
 Acceptable values of `cover` are:
 - `:open` or [`Open`](@ref Cover)
 - `:closed` or [`Closed`](@ref Cover)
@@ -363,16 +463,6 @@ Acceptable values of `cover` are:
 # Extended help
 
 - A truncated Gaussian smoothing kernel is assumed. The Gaussian is truncated at ``4σ``.
-- The linear boundary correction is explained in Refs. Lewis (2019) and Jones (1996).
-
-## References:
-
-- M. C. Jones and P. J. Foster. “A simple nonnegative boundary correction method for kernel
-  density estimation”. In: Statistica Sinica 6 (1996), pp. 1005–1013.
-
-- A. Lewis. "GetDist: a Python package for analysing Monte Carlo samples".
-  In: _arXiv e-prints_ (Oct. 2019).
-  arXiv: [1910.13970 \\[astro-ph.IM\\]](https://arxiv.org/abs/1910.13970)
 """
 function kde(data;
              method::AbstractKDEMethod = MultiplicativeBiasKDE(),
