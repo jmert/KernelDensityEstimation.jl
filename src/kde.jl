@@ -128,6 +128,23 @@ Base.iterate(::UnivariateKDE, ::Any) = nothing
 @noinline _warn_unused(kwargs) = @warn "Unused keyword argument(s)" kwargs=kwargs
 warn_unused(kwargs) = length(kwargs) > 0 ? _warn_unused(kwargs) : nothing
 
+"""
+    estim, info = estimate(method::AbstractKDEMethod, data::AbstractVector; kwargs...)
+    estim, info = estimate(method::AbstractKDEMethod, data::AbstractKDE, info::AbstractKDEInfo; kwargs...)
+
+Apply the kernel density estimation algorithm `method` to the given data, either in the
+form of a vector of `data` or a prior density estimate and its corresponding pipeline
+`info` (to support being part of a processing pipeline).
+
+## Returns
+
+- `estim::`[`AbstractKDE`](@ref): The resultant kernel density estimate.
+- `info::`[`AbstractKDEInfo`](@ref): Auxiliary information describing details of the
+  density estimation either useful or necessary for constructing a pipeline of processing
+  steps.
+"""
+function estimate end
+
 between_closed(lo, hi) = ≥(lo) ∘ ≤(hi)
 _filter(data, lo, hi) = Iterators.filter(between_closed(lo, hi), data)
 
@@ -224,9 +241,9 @@ function _kdebin(::LinearBinning, data, lo, hi, Δx, nbins)
     return ν, f
 end
 
-function kde(method::AbstractBinningKDE, data;
-        lo = nothing, hi = nothing, nbins = nothing, bandwidth = nothing, bwratio = 1,
-        cover::Cover.T = Open, kwargs...)
+function estimate(method::AbstractBinningKDE, data;
+                  lo = nothing, hi = nothing, nbins = nothing, cover::Cover.T = Open,
+                  bandwidth = nothing, bwratio = 1, kwargs...)
     warn_unused(kwargs)
     T = float(eltype(data))
 
@@ -273,11 +290,11 @@ Base.@kwdef struct BasicKDE{M<:AbstractBinningKDE} <: AbstractKDEMethod
     binning::M = HistogramBinning()
 end
 
-function kde(method::BasicKDE, data; bwratio = 2, kwargs...)
-    binned, info = kde(method.binning, data; bwratio = bwratio, kwargs...)
-    return kde(method, binned, info)
+function estimate(method::BasicKDE, data; bwratio = 2, kwargs...)
+    binned, info = estimate(method.binning, data; bwratio, kwargs...)
+    return estimate(method, binned, info)
 end
-function kde(::BasicKDE, binned::UnivariateKDE, info::UnivariateKDEInfo)
+function estimate(::BasicKDE, binned::UnivariateKDE, info::UnivariateKDEInfo)
     x, f = binned
     bw = info.bandwidth
     Δx = step(x)
@@ -322,13 +339,13 @@ Base.@kwdef struct LinearBoundaryKDE{M<:AbstractBinningKDE} <: AbstractKDEMethod
     binning::M = HistogramBinning()
 end
 
-function kde(method::LinearBoundaryKDE, data; bwratio = 8, kwargs...)
-    binned, info = kde(method.binning, data; bwratio = bwratio, kwargs...)
-    return kde(method, binned, info)
+function estimate(method::LinearBoundaryKDE, data; bwratio = 8, kwargs...)
+    binned, info = estimate(method.binning, data; bwratio, kwargs...)
+    return estimate(method, binned, info)
 end
-function kde(method::LinearBoundaryKDE, binned::UnivariateKDE, info::UnivariateKDEInfo)
+function estimate(method::LinearBoundaryKDE, binned::UnivariateKDE, info::UnivariateKDEInfo)
     h = copy(binned.f)
-    (x, f), info = kde(BasicKDE(method.binning), binned, info)
+    (x, f), info = estimate(BasicKDE(method.binning), binned, info)
 
     # apply a linear boundary correction
     # see Eqn 12 & 16 of Lewis (2019)
@@ -384,11 +401,10 @@ Base.@kwdef struct MultiplicativeBiasKDE{B<:AbstractBinningKDE,M<:AbstractKDEMet
     method::M = LinearBoundaryKDE()
 end
 
-
-function kde(method::MultiplicativeBiasKDE, data; bwratio = 8, kwargs...)
+function estimate(method::MultiplicativeBiasKDE, data; bwratio = 8, kwargs...)
     # generate pilot KDE
-    base, info = kde(method.binning, data; bwratio = bwratio, kwargs...)
-    pilot, info = kde(method.method, base, info)
+    base, info = estimate(method.binning, data; bwratio, kwargs...)
+    pilot, info = estimate(method.method, base, info)
 
     # use the pilot KDE to flatten the unsmoothed histogram
     nonzero(x) = iszero(x) ? one(x) : x
@@ -396,7 +412,7 @@ function kde(method::MultiplicativeBiasKDE, data; bwratio = 8, kwargs...)
     base.f ./= pilot.f
 
     # then run KDE again on the flattened distribution
-    iter, _ = kde(method.method, base, info)
+    iter, _ = estimate(method.method, base, info)
 
     # unflatten and return
     iter.f .*= pilot.f
@@ -476,12 +492,11 @@ Acceptable values of `cover` are:
 """
 function kde(data;
              method::AbstractKDEMethod = MultiplicativeBiasKDE(),
-             lo = nothing, hi = nothing, nbins = nothing,
-             bandwidth = nothing, bwratio = 8, cover = :open
+             lo = nothing, hi = nothing, nbins = nothing, cover = :open,
+             bandwidth = nothing, bwratio = 8,
             )
     cover = to_cover(cover)
-    estim, _ = kde(method, data; lo = lo, hi = hi, nbins = nbins,
-                   bandwidth = bandwidth, bwratio = bwratio, cover = to_cover(cover))
+    estim, _ = estimate(method, data; lo, hi, nbins, cover, bandwidth, bwratio)
     estim.f ./= sum(estim.f) * step(estim.x)
     return estim
 end

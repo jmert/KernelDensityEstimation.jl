@@ -1,6 +1,6 @@
 using Test
 
 @testset verbose=true "KernelDensityEstimation tests" begin
-    @testset "Convolutions" include("conv.jl")
-    @testset verbose=true "Kernel Density Estimation" include("kde.jl")
+    @testset "Convolutions" begin; include("conv.jl"); end
+    @testset verbose=true "Kernel Density Estimation" begin; include("kde.jl"); end
 end

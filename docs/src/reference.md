@@ -44,4 +44,5 @@ AbstractKDE
 AbstractKDEInfo
 UnivariateKDEInfo
 AbstractKDEMethod
+estimate
 ```
