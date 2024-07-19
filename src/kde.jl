@@ -14,13 +14,13 @@ For some given data ``d ∈ [a, b]``, the cover conditions have the following im
 - `Closed`: The domain ``K ∈ [a, b]`` is used directly as the bounds of the binning.
 - `Open`: The desired domain ``K ∈ (-∞, +∞)`` is effectively achieved by widening the
   bounds of the data by the size of the finite convolution kernel.
-  Specifically, the binning is defined over the range ``[a - 4σ, b + 4σ]`` where ``σ``
+  Specifically, the binning is defined over the range ``[a - 8σ, b + 8σ]`` where ``σ``
   is the bandwidth of the Gaussian convolution kernel.
 - `ClosedLeft`: The left half-closed interval ``K ∈ [a, +∞)`` is used as the bounds for
-  binning by adjusting the upper limit to the range ``[a, b + 4σ]``.
+  binning by adjusting the upper limit to the range ``[a, b + 8σ]``.
   The equivalent alias `OpenRight` may also be used.
 - `ClosedRight`: The right half-closed interval ``K ∈ (-∞, b]`` is used as the bounds for
-  binning by adjusting the lower limit to the range ``[a - 4σ, b]``.
+  binning by adjusting the lower limit to the range ``[a - 8σ, b]``.
   The equivalent alias `OpenLeft` may also be used.
 """
 baremodule Cover
@@ -253,15 +253,16 @@ function estimate(method::AbstractBinningKDE, data;
     v = _filter(data, lo′, hi′)
 
     bw = !isnothing(bandwidth) ? T(bandwidth) : estimate_bandwidth(SilvermanBandwidth(), v)
+
+    lo′ -= (cover == Closed || cover == ClosedLeft) ? zero(T) : 8bw
+    hi′ += (cover == Closed || cover == ClosedRight) ? zero(T) : 8bw
+
     if isnothing(nbins)
         nbins′ = max(1, round(Int, bwratio * (hi′ - lo′) / bw))
     else
         nbins′ = Int(nbins)
         nbins′ > 0 || throw(ArgumentError("nbins must be a positive integer"))
     end
-
-    lo′ -= (cover == Closed || cover == ClosedLeft) ? zero(T) : 4bw
-    hi′ += (cover == Closed || cover == ClosedRight) ? zero(T) : 4bw
 
     edges = range(lo′, hi′, length = nbins′ + 1)
     Δx = hi′ > lo′ ? step(edges) : one(lo′)  # 1 bin if histogram has zero width

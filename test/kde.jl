@@ -20,8 +20,8 @@ centers2edges(r) = (Δ = step(r) / 2; range(first(r) - Δ, last(r) + Δ, length 
     @test step(k.x) == step(x)
     @test centers2edges(k.x) == x
 
-    # open boundaries --- histogram extends to 4x further left/right than lo/hi
-    x = range(kws.lo - 4kws.bandwidth, kws.hi + 4kws.bandwidth, length = kws.nbins + 1)
+    # open boundaries --- histogram extends to 8x further left/right than lo/hi
+    x = range(kws.lo - 8kws.bandwidth, kws.hi + 8kws.bandwidth, length = kws.nbins + 1)
     k, info = estimate(KDE.HistogramBinning(), v; cover = KDE.Open, kws...)
     @test info.cover === KDE.Open
     @test length(k.x) == kws.nbins
@@ -30,14 +30,14 @@ centers2edges(r) = (Δ = step(r) / 2; range(first(r) - Δ, last(r) + Δ, length 
 
     # half-open boundaries --- either left or right side is extended, while the other is
     # exact
-    x = range(kws.lo, kws.hi + 4kws.bandwidth, length = kws.nbins + 1)
+    x = range(kws.lo, kws.hi + 8kws.bandwidth, length = kws.nbins + 1)
     k, info = estimate(KDE.HistogramBinning(), v; cover = KDE.ClosedLeft, kws...)
     @test info.cover === KDE.ClosedLeft
     @test length(k.x) == kws.nbins
     @test step(k.x) == step(x)
     @test centers2edges(k.x) == x
 
-    x = range(kws.lo - 4kws.bandwidth, kws.hi, length = kws.nbins + 1)
+    x = range(kws.lo - 8kws.bandwidth, kws.hi, length = kws.nbins + 1)
     k, info = estimate(KDE.HistogramBinning(), v; cover = KDE.ClosedRight, kws...)
     @test info.cover === KDE.ClosedRight
     @test length(k.x) == kws.nbins
@@ -154,6 +154,24 @@ end
     g = exp.(.-(x ./ bw) .^2 ./ 2) ./ (bw * sqrt(2π)) .* step(x)
     @test all(isapprox.(f1 .* step(x), g, atol = 1e-5))
     @test all(isapprox.(f2 .* step(x), g, atol = 1e-5))
+
+    # On an open interval, probability should be conserved.
+    k, _ = estimate(KDE.BasicKDE(), v_uniform, cover = KDE.Open)
+    @test sum(k.f) * step(k.x) ≈ 1.0
+
+    # But on (semi-)closed intervals, the norm will drop
+    kl, _ = estimate(KDE.BasicKDE(), v_uniform, cover = KDE.ClosedLeft)
+    nl = sum(kl.f) * step(kl.x)
+    @test nl < 0.96
+
+    kr, _ = estimate(KDE.BasicKDE(), v_uniform, cover = KDE.ClosedRight)
+    nr = sum(kr.f) * step(kr.x)
+    @test nr < 0.96
+    @test nl ≈ nr  # should be nearly symmetric
+
+    kc, _ = estimate(KDE.BasicKDE(), v_uniform, cover = KDE.Closed)
+    nc = sum(kc.f) * step(kc.x)
+    @test nc < 0.91
 end
 
 @testset "Linear Boundary Correction" begin
