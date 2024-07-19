@@ -200,7 +200,7 @@ function _kdebin(::HistogramBinning, data, lo, hi, Δx, nbins)
 
         # calculate bin index; subtraction of (x == hi) makes the last bin a closed bin
         zz = (x - lo) / Δx
-        ii = unsafe_trunc(Int, zz) - (x == hi)
+        ii = unsafe_trunc(Int, zz) - ((hi > lo) & (x == hi))
         # N.B. ii is a 0-index offset
 
         f[ii + 1] += one(T)
@@ -222,7 +222,7 @@ function _kdebin(::LinearBinning, data, lo, hi, Δx, nbins)
 
         # calculate bin index; subtraction of (x == hi) makes the last bin a closed bin
         zz = (x - lo) / Δx
-        ii = unsafe_trunc(Int, zz) - (x == hi)
+        ii = unsafe_trunc(Int, zz) - ((hi > lo) & (x == hi))
         # N.B. ii is a 0-index offset
 
         ww = (zz - ii) - one(T) / 2  # signed distance from the bin center

@@ -102,10 +102,11 @@ end
     @test info.bandwidth ≈ b₀
 
     # make sure errors do not occur when uniform data is provided
-    let (k, info) = estimate(KDE.HistogramBinning(), ones(100))
+    let (k, info) = estimate(KDE.HistogramBinning(), ones(100); cover = KDE.Closed)
         @test length(k.x) == 1
         @test isfinite(info.bandwidth) && !iszero(info.bandwidth)
-        @test sum(k.f) * step(k.x) == 1.0
+        @test step(k.x) == 0.0  # zero-width bin
+        @test sum(k.f) == 1.0  # like a Kronecker delta
     end
 
     # make sure the bandwidth argument is converted to the appropriate common type
