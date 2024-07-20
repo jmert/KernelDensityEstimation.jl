@@ -8,6 +8,32 @@ using Random: rand
 edges2centers(r) = r[2:end] .- step(r) / 2
 centers2edges(r) = (Δ = step(r) / 2; range(first(r) - Δ, last(r) + Δ, length = length(r) + 1))
 
+@testset "Options Handling" begin
+    import .KDE: init
+
+    # Make sure the option processing is fully inferrable
+    NT = @NamedTuple{lo::Float64, hi::Float64, nbins::Int, cover::KDE.Cover.T,
+                     bandwidth::Float64, bwratio::Float64}
+    WT = @NamedTuple{lo::Any, hi::Any, nbins::Any, cover::Any, bandwidth::Any, bwratio::Any}
+    #  don't cover too many variations, since that just adds to the test time
+    variations = [WT((lo, hi, nbins, cover, bandwidth, bwratio)) for
+        lo in (nothing, -1),
+        hi in (nothing,),
+        nbins in (nothing, 10),
+        cover in (:open, KDE.Closed),
+        bandwidth in (KDE.SilvermanBandwidth(), 1.0),
+        bwratio in (1,)
+    ]
+    @testset "options = $kws" for kws in variations
+        @test @inferred(init([1.0]; kws...)) isa Tuple{Vector{Float64},NT}
+    end
+    # also test that default values work
+    @test @inferred(init([1.0])) isa Tuple{Vector{Float64},NT}
+
+    # Unused options that make it down to the option processing step log a warning message
+    @test_logs (:warn, "Unused keyword argument(s)") KDE.init([1.0], unusedarg=true)
+end
+
 @testset "Bounds Handling" begin
     v = [1.0, 2.0]
     kws = (; lo = 0.0, hi = 5.0, nbins = 5, bandwidth = 1.0, bwratio = 1)

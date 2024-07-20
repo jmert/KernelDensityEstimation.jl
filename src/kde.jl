@@ -105,10 +105,14 @@ form of a vector of `data` or a prior density estimate and its corresponding pip
 function estimate end
 
 """
-    h = bandwidth(estimator::AbstractBandwidthEstimator, data::AbstractVector, cover::Cover.T)
+    h = bandwidth(estimator::AbstractBandwidthEstimator, data::AbstractVector{T},
+                  lo::T, hi::T, cover::Cover.T) where {T}
 
 Determine the appropriate bandwidth `h` of the data set `data` using chosen `estimator`
 algorithm.
+The bandwidth is provided the range (`lo` through `hi`) and coverage (`cover`) of the
+request KDE method for use in filtering and/or correctly interpreting the data, if
+necessary.
 """
 function bandwidth end
 
@@ -151,35 +155,56 @@ Base.iterate(estim::UnivariateKDE, ::Val{:f}) = (estim.f, nothing)
 Base.iterate(::UnivariateKDE, ::Any) = nothing
 
 @noinline _warn_unused(kwargs) = @warn "Unused keyword argument(s)" kwargs=kwargs
-warn_unused(kwargs) = length(kwargs) > 0 ? _warn_unused(kwargs) : nothing
 
-between_closed(lo, hi) = ≥(lo) ∘ ≤(hi)
-_filter(data, lo, hi) = Iterators.filter(between_closed(lo, hi), data)
-
-function _extrema(data, lo, hi)
-    T = eltype(data)
-    !isnothing(lo) && !isnothing(hi) && return (T(lo), T(hi))
+function _extrema(data::AbstractVector{T}, lo, hi) where {T}
+    !isnothing(lo) && !isnothing(hi) && return (T(lo), T(hi))::Tuple{T,T}
     a = b = first(data)
     for x in data
         a = min(a, x)
         b = max(b, x)
     end
     return (isnothing(lo) ? a : T(lo),
-            isnothing(hi) ? b : T(hi))
+            isnothing(hi) ? b : T(hi))::Tuple{T,T}
 end
 
-function _count_var(data)
-    T = eltype(data)
-    ν = 0
-    μ = μ₋₁ = σ² = zero(T)
-    for x in data
-        ν += 1
-        w = one(T) / ν
-        μ₋₁, μ = μ, (one(T) - w) * μ + w * x
-        σ² = (one(T) - w) * σ² + w * (x - μ) * (x - μ₋₁)
+function init(data::AbstractVector{T};
+              lo::Union{Nothing,<:Real} = nothing,
+              hi::Union{Nothing,<:Real} = nothing,
+              nbins::Union{Nothing,<:Integer} = nothing,
+              cover::Union{Symbol,Cover.T} = :open,
+              bandwidth::Union{<:Real,<:AbstractBandwidthEstimator} = SilvermanBandwidth(),
+              bwratio::Real = 1, kwargs...) where {T}
+    # Convert from symbol to type, if necessary
+    cover = to_cover(cover)::Cover.T
+    # Refine the lower and upper bounds, as necessary
+    lo, hi = _extrema(data, lo, hi)::Tuple{T,T}
+
+    # Estimate bandwidth from data, as necessary
+    bandwidth = bandwidth isa Real ? convert(T, bandwidth) :
+                KernelDensityEstimation.bandwidth(bandwidth, data, lo, hi, cover)::T
+    bwratio = convert(T, bwratio)
+
+    # Then expand the bounds if the bound(s) are open
+    lo -= (cover == Closed || cover == ClosedLeft) ? zero(T) : 8bandwidth
+    hi += (cover == Closed || cover == ClosedRight) ? zero(T) : 8bandwidth
+
+    # Calculate the number of bins to use in the histogram
+    if isnothing(nbins)
+        nbins = max(1, round(Int, bwratio * (hi - lo) / bandwidth))
+    else
+        nbins = Int(nbins)
+        nbins > 0 || throw(ArgumentError("nbins must be a positive integer"))
     end
-    return (; count = ν, var = σ²)
+
+    # Warn if we received any parameters which should have been consumed earlier in
+    # the pipeline
+    if length(kwargs) > 0
+        _warn_unused(kwargs)
+    end
+
+    return data, (; lo, hi, nbins, cover, bandwidth, bwratio)
 end
+
 
 """
     struct HistogramBinning <: AbstractBinningKDE end
@@ -249,38 +274,19 @@ function _kdebin(::LinearBinning, data, lo, hi, Δx, nbins)
     return ν, f
 end
 
-function estimate(method::AbstractBinningKDE, data;
-                  lo = nothing, hi = nothing, nbins = nothing, cover::Cover.T = Open,
-                  bandwidth = nothing, bwratio = 1, kwargs...)
-    warn_unused(kwargs)
-    T = float(eltype(data))
+function estimate(method::AbstractBinningKDE, data; kwargs...)
+    data, options = init(data; kwargs...)
+    lo, hi, nbins = options.lo, options.hi, options.nbins
 
-    # determine lower and upper limits of the histogram
-    lo′, hi′ = _extrema(data, lo, hi)
-    # filter the data to be only in-bounds
-    v = _filter(data, lo′, hi′)
-
-    bw = !isnothing(bandwidth) ? T(bandwidth) :
-            KernelDensityEstimation.bandwidth(SilvermanBandwidth(), v, cover)
-
-    lo′ -= (cover == Closed || cover == ClosedLeft) ? zero(T) : 8bw
-    hi′ += (cover == Closed || cover == ClosedRight) ? zero(T) : 8bw
-
-    if isnothing(nbins)
-        nbins′ = max(1, round(Int, bwratio * (hi′ - lo′) / bw))
-    else
-        nbins′ = Int(nbins)
-        nbins′ > 0 || throw(ArgumentError("nbins must be a positive integer"))
-    end
-
-    edges = range(lo′, hi′, length = nbins′ + 1)
-    Δx = hi′ > lo′ ? step(edges) : one(lo′)  # 1 bin if histogram has zero width
+    T = eltype(data)
+    edges = range(lo, hi, length = nbins + 1)
+    Δx = hi > lo ? step(edges) : one(lo)  # 1 bin if histogram has zero width
     centers = edges[2:end] .- Δx / 2
 
-    ν, f = _kdebin(method, v, lo′, hi′, Δx, nbins′)
+    ν, f = _kdebin(method, data, lo, hi, Δx, nbins)
     estim = UnivariateKDE(centers, f)
     kernel = UnivariateKDE(range(zero(T), zero(T), length = 1), [one(T)])
-    info = UnivariateKDEInfo(; npoints = ν, cover, bandwidth = bw, kernel)
+    info = UnivariateKDEInfo(; npoints = ν, options.cover, options.bandwidth, kernel)
     return estim, info
 end
 
@@ -445,9 +451,19 @@ where ``n`` is the length of ``v`` and ``σ̂`` is its sample variance.
 """
 struct SilvermanBandwidth <: AbstractBandwidthEstimator end
 
-function bandwidth(::SilvermanBandwidth, v, ::Cover.T)
-    # Estimate a nominal bandwidth using Silverman's Rule.
-    #
+function bandwidth(::SilvermanBandwidth, v::AbstractVector{T},
+                      lo::T, hi::T, ::Cover.T) where {T}
+    # Get the count and variance simultaneously
+    #   Calculate variance via Welford's algorithm
+    ν = 0
+    μ = μ₋₁ = σ² = zero(T)
+    for x in v
+        lo ≤ x ≤ hi || continue  # skip out-of-bounds elements
+        ν += 1
+        w = one(T) / ν
+        μ₋₁, μ = μ, (one(T) - w) * μ + w * x
+        σ² = (one(T) - w) * σ² + w * (x - μ) * (x - μ₋₁)
+    end
     # From Hansen (2009) — https://users.ssc.wisc.edu/~bhansen/718/NonParametrics1.pdf
     # for a Gaussian kernel:
     # - Table 1:
@@ -456,10 +472,8 @@ function bandwidth(::SilvermanBandwidth, v, ::Cover.T)
     # - Section 2.9, letting ν = 2:
     #   - bw = σ̂ n^(-1/5) C₂(k)
     #     C₂(k) = 2 ( 8R(k)√π / 96κ₂² )^(1/5) == (4/3)^(1/5)
-    T = float(eltype(v))
-    n, σ² = _count_var(v)
-    bw = ifelse(iszero(σ²), eps(one(T)), sqrt(σ²) * (T(4 // 3) / n)^(one(T) / 5))
-    return bw
+    return iszero(σ²) ? eps(one(T)) :
+        sqrt(σ²) * (T(4 // 3) / ν)^(one(T) / 5)
 end
 
 
@@ -468,10 +482,11 @@ end
 #  # not yet implemented
 #end
 
+
 """
     estim = kde(v; method = MultiplicativeBiasKDE()
                 lo = nothing, hi = nothing, nbins = nothing,
-                bandwidth = nothing, bwratio = 8, cover = :open)
+                bandwidth = SilvermanBandwidth(), bwratio = 8, cover = :open)
 
 Calculate a discrete kernel density estimate (KDE) `f(x)` of the sample distribution of `v`.
 
@@ -504,10 +519,11 @@ Acceptable values of `cover` are:
 function kde(data;
              method::AbstractKDEMethod = MultiplicativeBiasKDE(),
              lo = nothing, hi = nothing, nbins = nothing, cover = :open,
-             bandwidth = nothing, bwratio = 8,
+             bandwidth = SilvermanBandwidth(), bwratio = 8,
             )
-    cover = to_cover(cover)
     estim, _ = estimate(method, data; lo, hi, nbins, cover, bandwidth, bwratio)
+    # The pipeline is not perfectly norm-preserving, so renormalize before returning to
+    # the user.
     estim.f ./= sum(estim.f) * step(estim.x)
     return estim
 end
