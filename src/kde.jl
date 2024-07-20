@@ -88,6 +88,31 @@ Abstract supertype of kernel bandwidth estimation techniques.
 abstract type AbstractBandwidthEstimator end
 
 """
+    estim, info = estimate(method::AbstractKDEMethod, data::AbstractVector; kwargs...)
+    estim, info = estimate(method::AbstractKDEMethod, data::AbstractKDE, info::AbstractKDEInfo; kwargs...)
+
+Apply the kernel density estimation algorithm `method` to the given data, either in the
+form of a vector of `data` or a prior density estimate and its corresponding pipeline
+`info` (to support being part of a processing pipeline).
+
+## Returns
+
+- `estim::`[`AbstractKDE`](@ref): The resultant kernel density estimate.
+- `info::`[`AbstractKDEInfo`](@ref): Auxiliary information describing details of the
+  density estimation either useful or necessary for constructing a pipeline of processing
+  steps.
+"""
+function estimate end
+
+"""
+    h = bandwidth(estimator::AbstractBandwidthEstimator, data::AbstractVector, cover::Cover.T)
+
+Determine the appropriate bandwidth `h` of the data set `data` using chosen `estimator`
+algorithm.
+"""
+function bandwidth end
+
+"""
     UnivariateKDE{T,R<:AbstractRange{T},V<:AbstractVector{T}} <: AbstractKDE{T}
 
 ## Fields
@@ -127,23 +152,6 @@ Base.iterate(::UnivariateKDE, ::Any) = nothing
 
 @noinline _warn_unused(kwargs) = @warn "Unused keyword argument(s)" kwargs=kwargs
 warn_unused(kwargs) = length(kwargs) > 0 ? _warn_unused(kwargs) : nothing
-
-"""
-    estim, info = estimate(method::AbstractKDEMethod, data::AbstractVector; kwargs...)
-    estim, info = estimate(method::AbstractKDEMethod, data::AbstractKDE, info::AbstractKDEInfo; kwargs...)
-
-Apply the kernel density estimation algorithm `method` to the given data, either in the
-form of a vector of `data` or a prior density estimate and its corresponding pipeline
-`info` (to support being part of a processing pipeline).
-
-## Returns
-
-- `estim::`[`AbstractKDE`](@ref): The resultant kernel density estimate.
-- `info::`[`AbstractKDEInfo`](@ref): Auxiliary information describing details of the
-  density estimation either useful or necessary for constructing a pipeline of processing
-  steps.
-"""
-function estimate end
 
 between_closed(lo, hi) = ≥(lo) ∘ ≤(hi)
 _filter(data, lo, hi) = Iterators.filter(between_closed(lo, hi), data)
@@ -252,7 +260,8 @@ function estimate(method::AbstractBinningKDE, data;
     # filter the data to be only in-bounds
     v = _filter(data, lo′, hi′)
 
-    bw = !isnothing(bandwidth) ? T(bandwidth) : estimate_bandwidth(SilvermanBandwidth(), v)
+    bw = !isnothing(bandwidth) ? T(bandwidth) :
+            KernelDensityEstimation.bandwidth(SilvermanBandwidth(), v, cover)
 
     lo′ -= (cover == Closed || cover == ClosedLeft) ? zero(T) : 8bw
     hi′ += (cover == Closed || cover == ClosedRight) ? zero(T) : 8bw
@@ -435,7 +444,8 @@ where ``n`` is the length of ``v`` and ``σ̂`` is its sample variance.
 - [Hansen2009](@citet)
 """
 struct SilvermanBandwidth <: AbstractBandwidthEstimator end
-function estimate_bandwidth(::SilvermanBandwidth, v)
+
+function bandwidth(::SilvermanBandwidth, v, ::Cover.T)
     # Estimate a nominal bandwidth using Silverman's Rule.
     #
     # From Hansen (2009) — https://users.ssc.wisc.edu/~bhansen/718/NonParametrics1.pdf
@@ -454,7 +464,7 @@ end
 
 
 #struct ISJBandwidth <: AbstractBandwidthEstimator end
-#function bandwidth(::ISJBandwidth, v)
+#function bandwidth(::ISJBandwidth, v, ::Cover.T)
 #  # not yet implemented
 #end
 

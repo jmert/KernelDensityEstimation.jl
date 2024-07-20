@@ -32,6 +32,7 @@ MultiplicativeBiasKDE
 ```@docs
 AbstractBandwidthEstimator
 SilvermanBandwidth
+bandwidth
 ```
 
 ---
