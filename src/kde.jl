@@ -1,3 +1,4 @@
+import FFTW
 import Logging: @warn
 
 """
@@ -446,6 +447,8 @@ a Gaussian smoothing kernel:
 ```
 where ``n`` is the length of ``v`` and ``σ̂`` is its sample variance.
 
+See also [`ISJBandwidth`](@ref)
+
 ## References
 - [Hansen2009](@citet)
 """
@@ -476,17 +479,134 @@ function bandwidth(::SilvermanBandwidth, v::AbstractVector{T},
         sqrt(σ²) * (T(4 // 3) / ν)^(one(T) / 5)
 end
 
+module _ISJ
+    using Roots: Roots, ZeroProblem, solve
 
-#struct ISJBandwidth <: AbstractBandwidthEstimator end
-#function bandwidth(::ISJBandwidth, v, ::Cover.T)
-#  # not yet implemented
-#end
+    # Calculates norm of the the j-th derivative of the convolved density function, e.g.
+    #
+    #   ||∂ʲ/∂xʲ[ f(x) * K_h(x) ]||²
+    #
+    # but in an efficient way which makes use of knowing K_h(x) is a Gaussian with
+    # standard deviation h and using the dicrete cosine transform of the distribution
+    # since convolution and derivatives are efficient in Fourier space.
+    function ∂ʲ(f̂::Vector{T}, h::T, j::Integer) where T <: Real
+        N = length(f̂)
+        expfac = -(2T(π) * h)^2
+
+        norm = zero(T)
+        for n in 1:(N - 1)
+            f̂ₙ² = abs2(f̂[n + 1])
+            kₙ = T(n) / 2N
+            norm += f̂ₙ² * kₙ^(2j) * exp(expfac * kₙ^2)
+        end
+        if j == 0
+            norm += abs2(f̂[1]) / 2
+        end
+        norm *= (2T(π))^(2j) / 2N
+        return norm
+    end
+
+    # Calculates the γ function, defined in Botev et al as the right-hand side of Eqn. 29
+    function γ(ν::Int, f̂::Vector{T}, j::Int, h::T) where {T<:Real}
+        N² = ∂ʲ(f̂, h, j + 1)
+        fac1 = (T(1) + T(2) ^ -T(j + 0.5)) / 3
+        fac2 = prod(T(1):2:T(2j-1)) / (sqrt(T(π) / 2) * ν * N²)
+        return (fac1 * fac2) ^ (T(1) / (2j + 3))
+    end
+
+    # Calculates the iteratively-defined γˡ function, defined in Botev et al, between
+    # Eqns. 29 and 30.
+    function γˡ(l::Int, ν::Integer, f̂::Vector{T}, h::T) where {T<:Real}
+        for j in l:-1:1
+            h = γ(ν, f̂, j, h)
+        end
+        return h
+    end
+
+    # Express the fixed-point equation (Botev et al Eqn. 30) as an expression where the
+    # root is the desired bandwidth.
+    function fixed_point_equation(h::T, (l, ν, f̂)::Tuple{Int, Int, Vector{T}}) where {T<:Real}
+        ξ = ((6sqrt(T(2)) - 3) / 7) ^ (one(T) / 5)
+        t = h - ξ * γˡ(l, ν, f̂, h)
+        return t
+    end
+
+    function estimate(l::Int, ν::Int, f̂::Vector{T}, h₀::T) where {T<:Real}
+        problem = ZeroProblem(fixed_point_equation, h₀)
+        t = solve(problem; p = (l, ν, f̂))
+        if isnan(t)
+            throw(ErrorException("ISJ estimator failed to converge. More data is needed."))
+        end
+        return t
+    end
+end
+
+"""
+    ISJBandwidth <: AbstractBandwidthEstimator
+
+Estimates the necessary bandwidth of a vector of data ``v`` using the Improved
+Sheather-Jones (ISJ) plug-in estimator of [Botev2010](@citet).
+
+This estimator is more capable of choosing an appropriate bandwidth for bimodal (and other
+highly non-Gaussian) distributions, but comes at the expense of greater computation time
+and no guarantee that the estimator converges when given very few data points.
+
+See also [`SilvermanBandwidth`](@ref)
+
+## Fields
+- `binning::`[`AbstractBinningKDE`](@ref): The binning type to apply to a data vector as the
+  first step of bandwidth estimation.
+  Defaults to [`HistogramBinning()`](@ref).
+
+- `bwratio::Int`: The relative resolution of the binned data used by the ISJ plug-in
+  estimator — there are `bwratio` bins per interval of size ``h₀``, where the intial
+  rough initial bandwidth estimate is given by the [`SilvermanBandwidth`](@ref) estimator.
+  Defaults to 2.
+
+- `niter::Int`: The number of iterations to perform in the plug-in estimator.
+  Defaults to 7, in accordance with Botev et. al. who state that higher orders show little
+  benefit.
+
+## References
+- [Botev2010](@citet)
+"""
+Base.@kwdef struct ISJBandwidth{B<:AbstractBinningKDE} <: AbstractBandwidthEstimator
+    binning::B = HistogramBinning()
+    bwratio::Int = 2
+    niter::Int = 7
+end
+
+function bandwidth(isj::ISJBandwidth{<:Any}, v::AbstractVector{T},
+                   lo::T, hi::T, cover::Cover.T) where {T}
+    # The Silverman bandwidth estimator should be sufficient to obtain a fine-enough
+    # binning that the ISJ algorithm can iterate.
+    # We need a histogram, so just reuse the binning base case of the estimator pipeline
+    # to provide what we need.
+    (x, f), info = estimate(isj.binning, v; lo, hi, cover, isj.bwratio,
+                            bandwidth = SilvermanBandwidth())
+
+    ν = info.npoints
+    Δx = step(x)
+    # The core of the ISJ algorithm works in a normalized unit system where Δx = 1.
+    # Two things of note:
+    #
+    #   1. We initialize the fixed-point algorithm with the Silverman bandwidth, but
+    #      scaled correctly for the change in axis. Then afterwards, the ISJ bandwidth
+    #      will need to be scaled back to the original axis, e.g. h → Δx × h
+    h₀ = info.bandwidth / Δx
+    #   2. Via the Fourier scaling theorem, f(x / Δx) ⇔ Δx × f̂(k), we must scale the DCT
+    #      by the grid step size.
+    f̂ = FFTW.r2r!(f, FFTW.REDFT10) .* Δx
+
+    # Now we simply solve for the fixed-point solution:
+    return Δx * _ISJ.estimate(isj.niter, ν, f̂, h₀)
+end
 
 
 """
     estim = kde(v; method = MultiplicativeBiasKDE()
                 lo = nothing, hi = nothing, nbins = nothing,
-                bandwidth = SilvermanBandwidth(), bwratio = 8, cover = :open)
+                bandwidth = ISJBandwidth(), bwratio = 8, cover = :open)
 
 Calculate a discrete kernel density estimate (KDE) `f(x)` of the sample distribution of `v`.
 
@@ -498,8 +618,8 @@ The histogram is then convolved with a Gaussian distribution with standard devia
 `bandwidth`. The `bwratio` parameter is used to calculate `nbins` when it is not given and
 corresponds to the ratio of the bandwidth to the width of each histogram bin.
 
-The bandwidth is estimated using Silverman's rule ([`SilvermanBandwidth`](@ref)) if no
-desired bandwidth is given.
+The default bandwidth estimator is the Improved Sheather-Jones ([`ISJBandwidth`](@ref)) if
+no desired bandwidth is given.
 
 The default `method` of density estimation uses the [`MultiplicativeBiasKDE`](@ref)
 pipeline, which includes corrections for boundary effects and peak broadening which should
@@ -519,7 +639,7 @@ Acceptable values of `cover` are:
 function kde(data;
              method::AbstractKDEMethod = MultiplicativeBiasKDE(),
              lo = nothing, hi = nothing, nbins = nothing, cover = :open,
-             bandwidth = SilvermanBandwidth(), bwratio = 8,
+             bandwidth = ISJBandwidth(), bwratio = 8,
             )
     estim, _ = estimate(method, data; lo, hi, nbins, cover, bandwidth, bwratio)
     # The pipeline is not perfectly norm-preserving, so renormalize before returning to
