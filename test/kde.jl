@@ -1,5 +1,3 @@
-using KernelDensityEstimation
-const KDE = KernelDensityEstimation
 using .KDE: estimate
 
 using FFTW

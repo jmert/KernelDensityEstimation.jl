@@ -1,4 +1,6 @@
 using Test
+using KernelDensityEstimation
+const KDE = KernelDensityEstimation
 
 struct IsEqualMatch{T} <: AbstractString
     msg::T
@@ -29,4 +31,11 @@ end
 @testset verbose=true "KernelDensityEstimation tests" begin
     @testset "Convolutions" begin; include("conv.jl"); end
     @testset verbose=true "Kernel Density Estimation" begin; include("kde.jl"); end
+    @testset verbose=true "Extensions" begin
+        if isdefined(Base, :get_extension)
+            include("extensions.jl")
+        else
+            @test_skip "Skipped"
+        end
+    end
 end
