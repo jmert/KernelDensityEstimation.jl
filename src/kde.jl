@@ -149,6 +149,17 @@ form of a vector of `data` or a prior density estimate and its corresponding pip
 function estimate end
 
 """
+    lo, hi, boundary = bounds(data::AbstractVector{T}, spec) where {T}
+
+Determine the appropriate interval, from `lo` to `hi` with boundary style `boundary`, for
+the density estimate, given the data vector `data` and KDE argument `bounds`.
+
+Packages may specialize this method on the `spec` argument to modify the behavior of
+the interval and boundary refinement for new argument types.
+"""
+function bounds end
+
+"""
     h = bandwidth(estimator::AbstractBandwidthEstimator, data::AbstractVector{T},
                   lo::T, hi::T, boundary::Boundary.T) where {T}
 
@@ -198,10 +209,8 @@ Base.iterate(estim::UnivariateKDE, ::Val{:x}) = (estim.x, Val(:f))
 Base.iterate(estim::UnivariateKDE, ::Val{:f}) = (estim.f, nothing)
 Base.iterate(::UnivariateKDE, ::Any) = nothing
 
-@noinline _warn_unused(kwargs) = @warn "Unused keyword argument(s)" kwargs=kwargs
-
 function _extrema(data::AbstractVector{T}, lo, hi) where {T}
-    !isnothing(lo) && !isnothing(hi) && return (T(lo), T(hi))::Tuple{T,T}
+    !isnothing(lo) && !isnothing(hi) && return (T(lo), T(hi))
     a = b = first(data)
     for x in data
         a = min(a, x)
@@ -211,17 +220,58 @@ function _extrema(data::AbstractVector{T}, lo, hi) where {T}
             isnothing(hi) ? b : T(hi))::Tuple{T,T}
 end
 
+"""
+   lo, hi, boundary = bounds(data::AbstractVector{T}, (lo, hi, boundary)) where {T}
+
+Determine the appropriate span from `lo` to `hi` for the density estimate, given the data
+vector `data` and possible explicit known boundaries as arguments. The extrema are used
+as necessary to refine a `nothing` input bound.
+"""
+function bounds(data::AbstractVector{T},
+                spec::Tuple{Union{<:Real,Nothing},
+                            Union{<:Real,Nothing},
+                            Union{Boundary.T,Symbol}}
+               ) where {T}
+    lo, hi, B = spec
+    return (_extrema(data, lo, hi)..., boundary(B))
+end
+
+bounds(data, spec::Tuple{Union{<:Real,Nothing},
+                         Union{<:Real,Nothing}}) = bounds(data, (spec..., :open))
+
+
+@noinline _warn_bounds_override(bounds, lo, hi) =
+    @warn "Keyword `bounds` is overriding non-nothing `lo` and/or `hi`" bounds=bounds lo=lo hi=hi
+
+@noinline _warn_unused(kwargs) = @warn "Unused keyword argument(s)" kwargs=kwargs
+
+"""
+    data, details = init(data::AbstractVector{T};
+                         lo = nothing, hi = nothing, boundary = nothing, bounds = nothing,
+                         nbins::Union{Nothing,<:Integer} = nothing,
+                         bandwidth::Union{<:Real,<:AbstractBandwidthEstimator} = ISJBandwidth(),
+                         bwratio::Real = 1, kwargs...) where {T}
+
+- `details = (; lo, hi, nbins, cover, bandwidth, bwratio)`
+"""
 function init(data::AbstractVector{T};
               lo::Union{Nothing,<:Real} = nothing,
               hi::Union{Nothing,<:Real} = nothing,
-              nbins::Union{Nothing,<:Integer} = nothing,
               boundary::Union{Symbol,Boundary.T} = :open,
+              bounds = nothing,
               bandwidth::Union{<:Real,<:AbstractBandwidthEstimator} = ISJBandwidth(),
-              bwratio::Real = 1, kwargs...) where {T}
-    # Convert from symbol to type, if necessary
-    boundary = KernelDensityEstimation.boundary(boundary)::Boundary.T
-    # Refine the lower and upper bounds, as necessary
-    lo, hi = _extrema(data, lo, hi)::Tuple{T,T}
+              bwratio::Real = 1,
+              nbins::Union{Nothing,<:Integer} = nothing,
+              kwargs...) where {T}
+
+    # Handle the option to provide either a single bounds argument of the triple of lo, hi,
+    # and boundary
+    if !isnothing(bounds) && (!isnothing(lo) || !isnothing(hi))
+        _warn_bounds_override(bounds, lo, hi)
+    end
+    lo, hi, boundary = let _bounds = KernelDensityEstimation.bounds
+        _bounds(data, isnothing(bounds) ? (lo, hi, boundary) : bounds)::Tuple{T,T,Boundary.T}
+    end
 
     # Estimate bandwidth from data, as necessary
     bandwidth = bandwidth isa Real ? convert(T, bandwidth) :
@@ -652,27 +702,29 @@ end
 
 
 """
-    estim = kde(v; method = MultiplicativeBiasKDE()
-                lo = nothing, hi = nothing, nbins = nothing,
-                bandwidth = ISJBandwidth(), bwratio = 8, boundary = :open)
+    estim = kde(v;
+                method = MultiplicativeBiasKDE(),
+                lo = nothing, hi = nothing, boundary = :open, bounds = nothing,
+                bandwidth = ISJBandwidth(), bwratio = 8 nbins = nothing)
 
-Calculate a discrete kernel density estimate (KDE) `f(x)` of the sample distribution of `v`.
-
-The KDE is constructed by first histogramming the input `v` into `nbins` bins with
-outermost bin edges spanning `lo` to `hi`, which default to the minimum and maximum of
-`v`, respectively, if not provided. The span of the histogram may be expanded outward
-based on the value of `boundary` (dictating whether the boundaries are open or closed).
-The histogram is then convolved with a Gaussian distribution with standard deviation
-`bandwidth`. The `bwratio` parameter is used to calculate `nbins` when it is not given and
-corresponds to the ratio of the bandwidth to the width of each histogram bin.
-
-The default bandwidth estimator is the Improved Sheather-Jones ([`ISJBandwidth`](@ref)) if
-no desired bandwidth is given.
+Calculate a discrete kernel density estimate (KDE) `f(x)` from samples `v`.
 
 The default `method` of density estimation uses the [`MultiplicativeBiasKDE`](@ref)
 pipeline, which includes corrections for boundary effects and peak broadening which should
 be an acceptable default in many cases, but a different [`AbstractKDEMethod`](@ref) can
 be chosen if necessary.
+
+The interval of the density estimate can be controlled by either the set of `lo`, `hi`, and
+`boundary` keywords or the `bounds` keyword, where the former are conveniences for setting
+`bounds = (lo, hi, boundary)`.
+The minimum and maximum of `v` are used if `lo` and/or `hi` are `nothing`, respectively.
+(See also [`bounds`](@ref).)
+
+The KDE is constructed by first histogramming the input `v` into `nbins` many bins with
+outermost bin edges spanning `lo` to `hi`. The span of the histogram may be expanded outward
+based on `boundary` condition, dictating whether the boundaries are open or closed.
+The `bwratio` parameter is used to calculate `nbins` when it is not given and corresponds
+(approximately) to the ratio of the bandwidth to the width of each histogram bin.
 
 Acceptable values of `boundary` are:
 - `:open` or [`Open`](@ref Boundary)
@@ -680,16 +732,17 @@ Acceptable values of `boundary` are:
 - `:closedleft`, `:openright`, [`ClosedLeft`](@ref Boundary), or [`OpenRight`](@ref Boundary)
 - `:closedright`, `:openleft`, [`ClosedRight`](@ref Boundary), or [`OpenLeft`](@ref Boundary)
 
-# Extended help
-
-- A truncated Gaussian smoothing kernel is assumed. The Gaussian is truncated at ``4σ``.
+The histogram is then convolved with a Gaussian distribution with standard deviation
+`bandwidth`.
+The default bandwidth estimator is the Improved Sheather-Jones ([`ISJBandwidth`](@ref)) if
+no explicit bandwidth is given.
 """
 function kde(data;
              method::AbstractKDEMethod = MultiplicativeBiasKDE(),
-             lo = nothing, hi = nothing, nbins = nothing, boundary = :open,
-             bandwidth = ISJBandwidth(), bwratio = 8,
+             lo = nothing, hi = nothing, boundary = :open, bounds = nothing,
+             bandwidth = ISJBandwidth(), bwratio = 8, nbins = nothing,
             )
-    estim, _ = estimate(method, data; lo, hi, nbins, boundary, bandwidth, bwratio)
+    estim, _ = estimate(method, data; lo, hi, boundary, bounds, nbins, bandwidth, bwratio)
     # The pipeline is not perfectly norm-preserving, so renormalize before returning to
     # the user.
     estim.f ./= sum(estim.f) * step(estim.x)

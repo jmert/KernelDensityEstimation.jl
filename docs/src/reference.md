@@ -14,6 +14,10 @@ Boundary
 
 ## Advanced User Interface
 
+```@docs
+init
+```
+
 ### Binning Methods
 ```@docs
 AbstractBinningKDE
@@ -47,5 +51,6 @@ AbstractKDEInfo
 UnivariateKDEInfo
 AbstractKDEMethod
 boundary
+bounds
 estimate
 ```
