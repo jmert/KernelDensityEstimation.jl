@@ -254,9 +254,9 @@ end
         &= \frac{1}{2π} \sqrt{\frac{π}{σ^2 + h^2}}
             \frac{(2j - 1)!!}{2^j \, (σ^2 + h^2)^j}
     \end{align*}
-
-    for ``j > 0``.
     ```
+    (trivially for ``j > 0``, and for ``j == 0`` when extended to negative odd integers such
+    that ``(2j - 1)!! = -1!! = 1``).
     =#
     function norm_G_conv_djK_dxj(σ, h, j)
         σ, h = promote(σ, h)
