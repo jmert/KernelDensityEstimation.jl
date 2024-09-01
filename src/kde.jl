@@ -27,22 +27,65 @@ For some given data ``d ∈ [a, b]``, the boundary conditions have the following
 baremodule Boundary
     import ..Base.@enum
 
-    export Closed, Open, ClosedLeft, ClosedRight, OpenLeft, OpenRight, to_boundary
+    export Closed, Open, ClosedLeft, ClosedRight, OpenLeft, OpenRight
 
     @enum T Closed Open ClosedLeft ClosedRight
     const OpenLeft = ClosedRight
     const OpenRight = ClosedLeft
-
-    to_boundary(x::Boundary.T) = x
-    to_boundary(x::Symbol) = x === :open ? Open :
-                             x === :closed ? Closed :
-                             x === :closedleft ? ClosedLeft :
-                             x === :openright ? ClosedLeft :
-                             x === :closedright ? ClosedRight :
-                             x === :openleft ? ClosedRight :
-                             throw(ArgumentError("Unknown boundary option: $x"))
 end
 using .Boundary
+
+"""
+    B = boundary(spec)
+
+Convert the specification `spec` to a boundary style `B`.
+
+Packages may specialize this method on the `spec` argument to modify the behavior of
+the boundary inference for new argument types.
+"""
+function boundary end
+
+boundary(spec::Boundary.T) = spec
+
+"""
+    B = boundary(spec::Symbol)
+
+Converts the following symbols to its corresponding boundary style:
+- `:open` -> [`Open`](@ref Boundary)
+- `:closed` -> [`Closed`](@ref Boundary)
+- `:closedleft` and `:openright` -> [`ClosedLeft`](@ref Boundary)
+- `:closedright` and `:openleft` -> [`ClosedRight`](@ref Boundary)
+"""
+boundary(spec::Symbol) = spec === :open ? Open :
+                         spec === :closed ? Closed :
+                         spec === :closedleft ? ClosedLeft :
+                         spec === :openright ? ClosedLeft :
+                         spec === :closedright ? ClosedRight :
+                         spec === :openleft ? ClosedRight :
+                         throw(ArgumentError("Unknown boundary option: $spec"))
+
+"""
+    B = boundary((lo, hi)::Tuple{<:Real,<:Real})
+
+Infers the appropriate boundary condition `B` given the lower and upper bounds of the
+domain. A finite value corresponds to a closed boundary, whereas an appropriately-signed
+infinity implies and open boundary. Having either the wrong sign (such as `hi == -Inf`)
+or a NaN value is an error.
+"""
+function boundary((lo, hi)::Tuple{<:Real,<:Real})
+    if isfinite(lo) && isfinite(hi)
+        return Closed
+    elseif isfinite(lo) && (isinf(hi) && hi > zero(hi))
+        return ClosedLeft
+    elseif isfinite(hi) && (isinf(lo) && lo < zero(lo))
+        return ClosedRight
+    elseif (isinf(lo) && lo < zero(lo)) && (isinf(hi) && hi > zero(hi))
+        return Open
+    else
+        throw(ArgumentError("Could not infer boundary for `lo = $lo`, `hi = $hi`"))
+    end
+end
+
 
 """
     AbstractKDE{T}
@@ -176,7 +219,7 @@ function init(data::AbstractVector{T};
               bandwidth::Union{<:Real,<:AbstractBandwidthEstimator} = ISJBandwidth(),
               bwratio::Real = 1, kwargs...) where {T}
     # Convert from symbol to type, if necessary
-    boundary = to_boundary(boundary)::Boundary.T
+    boundary = KernelDensityEstimation.boundary(boundary)::Boundary.T
     # Refine the lower and upper bounds, as necessary
     lo, hi = _extrema(data, lo, hi)::Tuple{T,T}
 

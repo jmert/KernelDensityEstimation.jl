@@ -43,6 +43,26 @@ rv_norm_long = rv_norm_σ .* randn(Random.seed!(Random.default_rng(), 1234), Int
 end
 
 @testset "Bounds Handling" begin
+    # direct boundary specifications
+    @test KDE.boundary(KDE.Open)        == KDE.boundary(:open)        == KDE.Open
+    @test KDE.boundary(KDE.Closed)      == KDE.boundary(:closed)      == KDE.Closed
+    @test KDE.boundary(KDE.ClosedLeft)  == KDE.boundary(:closedleft)  == KDE.ClosedLeft
+    @test KDE.boundary(KDE.ClosedRight) == KDE.boundary(:closedright) == KDE.ClosedRight
+    @test KDE.boundary(KDE.OpenLeft)    == KDE.ClosedRight
+    @test KDE.boundary(KDE.OpenRight)   == KDE.ClosedLeft
+    @test_throws(ArgumentError(match"Unknown boundary option: .*?"r), KDE.boundary(:something))
+
+    # inferring boundary specifications
+    @test KDE.boundary((-Inf, Inf)) == KDE.Open
+    @test KDE.boundary((0.0, Inf))  == KDE.ClosedLeft
+    @test KDE.boundary((-Inf, 0))   == KDE.ClosedRight
+    @test KDE.boundary((0, 1))      == KDE.Closed
+    for bnds in [(NaN, 1.0), (Inf, 1.0), (0.0, NaN), (0.0, -Inf)]
+        @test_throws(ArgumentError(match"Could not infer boundary for `lo = .*?`, `hi = .*?`"r),
+                     KDE.boundary(bnds))
+    end
+
+
     v = [1.0, 2.0]
     kws = (; lo = 0.0, hi = 5.0, nbins = 5, bandwidth = 1.0, bwratio = 1)
 

@@ -46,5 +46,6 @@ AbstractKDE
 AbstractKDEInfo
 UnivariateKDEInfo
 AbstractKDEMethod
+boundary
 estimate
 ```
