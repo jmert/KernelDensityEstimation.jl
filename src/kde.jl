@@ -10,7 +10,7 @@ const OpenRight = ClosedLeft
 
 Enumeration to describe the desired boundary conditions of the domain of the kernel
 density estimate ``K``.
-For some given data ``d ∈ [a, b]``, the cover conditions have the following impact:
+For some given data ``d ∈ [a, b]``, the boundary conditions have the following impact:
 
 - `Closed`: The domain ``K ∈ [a, b]`` is used directly as the bounds of the binning.
 - `Open`: The desired domain ``K ∈ (-∞, +∞)`` is effectively achieved by widening the
@@ -24,25 +24,25 @@ For some given data ``d ∈ [a, b]``, the cover conditions have the following im
   binning by adjusting the lower limit to the range ``[a - 8σ, b]``.
   The equivalent alias `OpenLeft` may also be used.
 """
-baremodule Cover
+baremodule Boundary
     import ..Base.@enum
 
-    export Closed, Open, ClosedLeft, ClosedRight, OpenLeft, OpenRight, to_cover
+    export Closed, Open, ClosedLeft, ClosedRight, OpenLeft, OpenRight, to_boundary
 
     @enum T Closed Open ClosedLeft ClosedRight
     const OpenLeft = ClosedRight
     const OpenRight = ClosedLeft
 
-    to_cover(x::Cover.T) = x
-    to_cover(x::Symbol) = x === :open ? Open :
-                          x === :closed ? Closed :
-                          x === :closedleft ? ClosedLeft :
-                          x === :openright ? ClosedLeft :
-                          x === :closedright ? ClosedRight :
-                          x === :openleft ? ClosedRight :
-                          throw(ArgumentError("Unknown cover option: $x"))
+    to_boundary(x::Boundary.T) = x
+    to_boundary(x::Symbol) = x === :open ? Open :
+                             x === :closed ? Closed :
+                             x === :closedleft ? ClosedLeft :
+                             x === :openright ? ClosedLeft :
+                             x === :closedright ? ClosedRight :
+                             x === :openleft ? ClosedRight :
+                             throw(ArgumentError("Unknown boundary option: $x"))
 end
-using .Cover
+using .Boundary
 
 """
     AbstractKDE{T}
@@ -107,12 +107,12 @@ function estimate end
 
 """
     h = bandwidth(estimator::AbstractBandwidthEstimator, data::AbstractVector{T},
-                  lo::T, hi::T, cover::Cover.T) where {T}
+                  lo::T, hi::T, boundary::Boundary.T) where {T}
 
 Determine the appropriate bandwidth `h` of the data set `data` using chosen `estimator`
 algorithm.
-The bandwidth is provided the range (`lo` through `hi`) and coverage (`cover`) of the
-request KDE method for use in filtering and/or correctly interpreting the data, if
+The bandwidth is provided the range (`lo` through `hi`) and boundary style (`boundary`) of
+the request KDE method for use in filtering and/or correctly interpreting the data, if
 necessary.
 """
 function bandwidth end
@@ -135,14 +135,14 @@ end
 
 ## Fields
 - `npoints::Int`: The number of values in the original data vector.
-- `cover::`[`Cover.T`](@ref Cover): The boundary condition assumed in the density estimation
-  process.
+- `boundary::`[`Boundary.T`](@ref Boundary): The boundary condition assumed in the density
+  estimation process.
 - `bandwidth::T`: The bandwidth of the convolution `kernel`.
 - `kernel::UnivariateKDE{T}`: The convolution kernel used to process the density estimate.
 """
 Base.@kwdef struct UnivariateKDEInfo{T} <: AbstractKDEInfo{T}
     npoints::Int
-    cover::Cover.T
+    boundary::Boundary.T
     bandwidth::T
     kernel::UnivariateKDE{T}
 end
@@ -172,22 +172,22 @@ function init(data::AbstractVector{T};
               lo::Union{Nothing,<:Real} = nothing,
               hi::Union{Nothing,<:Real} = nothing,
               nbins::Union{Nothing,<:Integer} = nothing,
-              cover::Union{Symbol,Cover.T} = :open,
+              boundary::Union{Symbol,Boundary.T} = :open,
               bandwidth::Union{<:Real,<:AbstractBandwidthEstimator} = ISJBandwidth(),
               bwratio::Real = 1, kwargs...) where {T}
     # Convert from symbol to type, if necessary
-    cover = to_cover(cover)::Cover.T
+    boundary = to_boundary(boundary)::Boundary.T
     # Refine the lower and upper bounds, as necessary
     lo, hi = _extrema(data, lo, hi)::Tuple{T,T}
 
     # Estimate bandwidth from data, as necessary
     bandwidth = bandwidth isa Real ? convert(T, bandwidth) :
-                KernelDensityEstimation.bandwidth(bandwidth, data, lo, hi, cover)::T
+                KernelDensityEstimation.bandwidth(bandwidth, data, lo, hi, boundary)::T
     bwratio = convert(T, bwratio)
 
     # Then expand the bounds if the bound(s) are open
-    lo -= (cover == Closed || cover == ClosedLeft) ? zero(T) : 8bandwidth
-    hi += (cover == Closed || cover == ClosedRight) ? zero(T) : 8bandwidth
+    lo -= (boundary == Closed || boundary == ClosedLeft) ? zero(T) : 8bandwidth
+    hi += (boundary == Closed || boundary == ClosedRight) ? zero(T) : 8bandwidth
 
     # Calculate the number of bins to use in the histogram
     if isnothing(nbins)
@@ -203,9 +203,10 @@ function init(data::AbstractVector{T};
         _warn_unused(kwargs)
     end
 
-    options = let lo = lo::T, hi = hi::T, nbins = nbins::Int, cover = cover::Cover.T,
-                  bandwidth = bandwidth::T, bwratio = bwratio::T
-        (; lo, hi, nbins, cover, bandwidth, bwratio)
+    options = let lo = lo::T, hi = hi::T, nbins = nbins::Int,
+                  boundary = boundary::Boundary.T, bandwidth = bandwidth::T,
+                  bwratio = bwratio::T
+        (; lo, hi, nbins, boundary, bandwidth, bwratio)
     end
     return data, options
 end
@@ -291,7 +292,7 @@ function estimate(method::AbstractBinningKDE, data; kwargs...)
     ν, f = _kdebin(method, data, lo, hi, Δx, nbins)
     estim = UnivariateKDE(centers, f)
     kernel = UnivariateKDE(range(zero(T), zero(T), length = 1), [one(T)])
-    info = UnivariateKDEInfo(; npoints = ν, options.cover, options.bandwidth, kernel)
+    info = UnivariateKDEInfo(; npoints = ν, options.boundary, options.bandwidth, kernel)
     return estim, info
 end
 
@@ -335,7 +336,7 @@ function estimate(::BasicKDE, binned::UnivariateKDE, info::UnivariateKDEInfo)
     # convolve the data with the kernel to construct a density estimate
     f̂ = conv(f, kernel, :same)
     estim = UnivariateKDE(x, f̂)
-    info = UnivariateKDEInfo(; info.npoints, info.bandwidth, info.cover,
+    info = UnivariateKDEInfo(; info.npoints, info.bandwidth, info.boundary,
                                kernel = UnivariateKDE(xx, kernel))
     return estim, info
 end
@@ -346,7 +347,7 @@ end
 
 A method of KDE which applies the linear boundary correction of [Jones1996](@citet) as
 described in [Lewis2019](@citet) after [`BasicKDE`](@ref) density estimation.
-This correction primarily impacts the KDE near a closed boundary (see [`Cover`](@ref)) and
+This correction primarily impacts the KDE near a closed boundary (see [`Boundary`](@ref)) and
 has the effect of improving any non-zero gradient at the boundary (when compared to
 normalization corrections which tend to leave the boundary too flat).
 
@@ -459,7 +460,7 @@ See also [`ISJBandwidth`](@ref)
 struct SilvermanBandwidth <: AbstractBandwidthEstimator end
 
 function bandwidth(::SilvermanBandwidth, v::AbstractVector{T},
-                      lo::T, hi::T, ::Cover.T) where {T}
+                   lo::T, hi::T, ::Boundary.T) where {T}
     # Get the count and variance simultaneously
     #   Calculate variance via Welford's algorithm
     ν = 0
@@ -581,12 +582,12 @@ Base.@kwdef struct ISJBandwidth{B<:AbstractBinningKDE} <: AbstractBandwidthEstim
 end
 
 function bandwidth(isj::ISJBandwidth{<:Any}, v::AbstractVector{T},
-                   lo::T, hi::T, cover::Cover.T) where {T}
+                   lo::T, hi::T, boundary::Boundary.T) where {T}
     # The Silverman bandwidth estimator should be sufficient to obtain a fine-enough
     # binning that the ISJ algorithm can iterate.
     # We need a histogram, so just reuse the binning base case of the estimator pipeline
     # to provide what we need.
-    (x, f), info = estimate(isj.binning, v; lo, hi, cover, isj.bwratio,
+    (x, f), info = estimate(isj.binning, v; lo, hi, boundary, isj.bwratio,
                             bandwidth = SilvermanBandwidth())
 
     ν = info.npoints
@@ -610,14 +611,14 @@ end
 """
     estim = kde(v; method = MultiplicativeBiasKDE()
                 lo = nothing, hi = nothing, nbins = nothing,
-                bandwidth = ISJBandwidth(), bwratio = 8, cover = :open)
+                bandwidth = ISJBandwidth(), bwratio = 8, boundary = :open)
 
 Calculate a discrete kernel density estimate (KDE) `f(x)` of the sample distribution of `v`.
 
 The KDE is constructed by first histogramming the input `v` into `nbins` bins with
 outermost bin edges spanning `lo` to `hi`, which default to the minimum and maximum of
 `v`, respectively, if not provided. The span of the histogram may be expanded outward
-based on the value of `cover` (dictating whether the boundaries are open or closed).
+based on the value of `boundary` (dictating whether the boundaries are open or closed).
 The histogram is then convolved with a Gaussian distribution with standard deviation
 `bandwidth`. The `bwratio` parameter is used to calculate `nbins` when it is not given and
 corresponds to the ratio of the bandwidth to the width of each histogram bin.
@@ -630,11 +631,11 @@ pipeline, which includes corrections for boundary effects and peak broadening wh
 be an acceptable default in many cases, but a different [`AbstractKDEMethod`](@ref) can
 be chosen if necessary.
 
-Acceptable values of `cover` are:
-- `:open` or [`Open`](@ref Cover)
-- `:closed` or [`Closed`](@ref Cover)
-- `:closedleft`, `:openright`, [`ClosedLeft`](@ref Cover), or [`OpenRight`](@ref Cover)
-- `:closedright`, `:openleft`, [`ClosedRight`](@ref Cover), or [`OpenLeft`](@ref Cover)
+Acceptable values of `boundary` are:
+- `:open` or [`Open`](@ref Boundary)
+- `:closed` or [`Closed`](@ref Boundary)
+- `:closedleft`, `:openright`, [`ClosedLeft`](@ref Boundary), or [`OpenRight`](@ref Boundary)
+- `:closedright`, `:openleft`, [`ClosedRight`](@ref Boundary), or [`OpenLeft`](@ref Boundary)
 
 # Extended help
 
@@ -642,10 +643,10 @@ Acceptable values of `cover` are:
 """
 function kde(data;
              method::AbstractKDEMethod = MultiplicativeBiasKDE(),
-             lo = nothing, hi = nothing, nbins = nothing, cover = :open,
+             lo = nothing, hi = nothing, nbins = nothing, boundary = :open,
              bandwidth = ISJBandwidth(), bwratio = 8,
             )
-    estim, _ = estimate(method, data; lo, hi, nbins, cover, bandwidth, bwratio)
+    estim, _ = estimate(method, data; lo, hi, nbins, boundary, bandwidth, bwratio)
     # The pipeline is not perfectly norm-preserving, so renormalize before returning to
     # the user.
     estim.f ./= sum(estim.f) * step(estim.x)

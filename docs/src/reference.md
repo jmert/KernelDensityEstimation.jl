@@ -9,7 +9,7 @@ CurrentModule = KernelDensityEstimation
 ```@docs
 kde
 UnivariateKDE
-Cover
+Boundary
 ```
 
 ## Advanced User Interface
