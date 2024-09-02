@@ -18,8 +18,6 @@ rv_norm_long = rv_norm_σ .* randn(Random.seed!(Random.default_rng(), 1234), Int
     import .KDE: init
 
     # Make sure the option processing is fully inferrable
-    NT = @NamedTuple{lo::Float64, hi::Float64, nbins::Int, boundary::KDE.Boundary.T,
-                     bandwidth::Float64, bwratio::Float64}
     WT = @NamedTuple{lo::Any, hi::Any, nbins::Any, boundary::Any, bandwidth::Any, bwratio::Any}
     #  don't cover too many variations, since that just adds to the test time
     variations = [WT((lo, hi, nbins, boundary, bandwidth, bwratio)) for
@@ -31,10 +29,10 @@ rv_norm_long = rv_norm_σ .* randn(Random.seed!(Random.default_rng(), 1234), Int
         bwratio in (1,)
     ]
     @testset "options = $kws" for kws in variations
-        @test @inferred(init([1.0]; kws...)) isa Tuple{Vector{Float64},NT}
+        @test @inferred(init([1.0]; kws...)) isa Tuple{Vector{Float64},KDE.UnivariateKDEInfo{Float64}}
     end
     # also test that default values work
-    @test @inferred(init([1.0], bandwidth = 1.0)) isa Tuple{Vector{Float64},NT}
+    @test @inferred(init([1.0], bandwidth = 1.0)) isa Tuple{Vector{Float64},KDE.UnivariateKDEInfo{Float64}}
 
     # Unused options that make it down to the option processing step log a warning message
     @test_logs (:warn, "Unused keyword argument(s)") KDE.init([1.0], bandwidth = 1.0, unusedarg=true)

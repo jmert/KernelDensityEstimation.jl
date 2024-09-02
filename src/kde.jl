@@ -187,18 +187,105 @@ end
 """
     UnivariateKDEInfo{T} <: AbstractKDEInfo{T}
 
+Information about the density estimation process, providing insight into both the
+entrypoint parameters and some internal state variables.
+
+# Extended help
+
 ## Fields
-- `npoints::Int`: The number of values in the original data vector.
-- `boundary::`[`Boundary.T`](@ref Boundary): The boundary condition assumed in the density
-  estimation process.
-- `bandwidth::T`: The bandwidth of the convolution `kernel`.
-- `kernel::UnivariateKDE{T}`: The convolution kernel used to process the density estimate.
+
+- `bounds::Any`:
+  The bounds specification of the estimate as passed to [`init()`](@ref), prior to making
+  it concrete via calling [`bounds()`](@ref).
+  Defaults to `nothing`.
+
+- `interval::Tuple{T,T}`:
+  The concrete interval of the density estimate after calling [`bounds()`](@ref) with the
+  value of the `.bounds` field but before adding requisite padding for open boundary
+  conditions.
+  Defaults to `(zero(T), zero(T))`.
+
+- `boundary::`[`Boundary.T`](@ref Boundary):
+  The concrete boundary condition assumed in the density estimate after calling
+  [`boundary()`](@ref) with the value of the `.bounds` field.
+  Defaults to [`Open`](@ref Boundary).
+
+- `bandwidth_alg::Union{Nothing,`[`AbstractBandwidthEstimator`](@ref)`}`:
+  Algorithm used to estimate an appropriate bandwidth, if a concrete value was not
+  provided to the estimator, otherwise `nothing`.
+  Defaults to `nothing`.
+
+- `bandwidth::T`:
+  The bandwidth of the convolution `kernel`.
+  Defaults to `zero(T)`.
+
+- `bwratio::T`:
+  The ratio between the bandwidth and the width of a histogram bin, used only when the
+  number of bins `.nbins` is not explicitly provided.
+  Defaults to `one(T)`.
+
+- `lo::T`:
+  The lower edge of the first bin in the density estimate, after possibly adjusting for
+  an open boundary condition compared to the `.interval` field.
+  Defaults to `zero(T)`.
+
+- `hi::T`:
+  The upper edge of the last bin in the density estimate, after possibly adjusting for
+  an open boundary condition compared to the `.interval` field.
+  Defaults to `zero(T)`.
+
+- `nbins::Int`:
+  The number of bins used in the histogram at the beinning of the density estimatation.
+  Defaults to `-1`.
+
+- `npoints::Int`:
+  The number of values in the original data vector.
+  Defaults to `-1`.
+
+- `kernel::Union{Nothing,`[`UnivariateKDE`](@ref)`{T}}`:
+  The convolution kernel used to process the density estimate.
+  Defaults to `nothing`.
 """
-Base.@kwdef struct UnivariateKDEInfo{T} <: AbstractKDEInfo{T}
-    npoints::Int
-    boundary::Boundary.T
-    bandwidth::T
-    kernel::UnivariateKDE{T}
+Base.@kwdef mutable struct UnivariateKDEInfo{T} <: AbstractKDEInfo{T}
+    bounds::Any = nothing
+    interval::Tuple{T,T} = (zero(T), zero(T))
+    boundary::Boundary.T = Open
+    bandwidth_alg::Union{Nothing,AbstractBandwidthEstimator} = nothing
+    bandwidth::T = zero(T)
+    bwratio::T = one(T)
+    lo::T = zero(T)
+    hi::T = zero(T)
+    nbins::Int = -1
+    npoints::Int = -1
+    kernel::Union{Nothing,UnivariateKDE{T}} = nothing
+end
+
+function Base.show(io::IO, info::UnivariateKDEInfo)
+    show(io, typeof(info))
+    if get(io, :compact, false)::Bool
+        print(io, "(…)")
+    else
+        first = true
+        print(io, "(")
+        for fld in fieldnames(typeof(info))
+            !first && print(io, ", ")
+            print(io, fld, " = ")
+            show(io, getfield(info, fld))
+            first = false
+        end
+        print(io, ")")
+    end
+end
+function Base.show(io::IO, ::MIME"text/plain", info::UnivariateKDEInfo)
+    show(io, typeof(info))
+    println(io, ":")
+
+    wd = textwidth("bandwidth_alg")
+    for fld in fieldnames(typeof(info))
+        print(io, lpad(fld, wd + 2), ": ")
+        show(io, getfield(info, fld))
+        println(io)
+    end
 end
 
 # define basic iteration syntax to destructure the contents of a UnivariateKDE;
@@ -210,7 +297,7 @@ Base.iterate(estim::UnivariateKDE, ::Val{:f}) = (estim.f, nothing)
 Base.iterate(::UnivariateKDE, ::Any) = nothing
 
 function _extrema(data::AbstractVector{T}, lo, hi) where {T}
-    !isnothing(lo) && !isnothing(hi) && return (T(lo), T(hi))
+    !isnothing(lo) && !isnothing(hi) && return (T(lo), T(hi))::Tuple{T,T}
     a = b = first(data)
     for x in data
         a = min(a, x)
@@ -251,8 +338,6 @@ bounds(data, spec::Tuple{Union{<:Real,Nothing},
                          nbins::Union{Nothing,<:Integer} = nothing,
                          bandwidth::Union{<:Real,<:AbstractBandwidthEstimator} = ISJBandwidth(),
                          bwratio::Real = 1, kwargs...) where {T}
-
-- `details = (; lo, hi, nbins, cover, bandwidth, bwratio)`
 """
 function init(data::AbstractVector{T};
               lo::Union{Nothing,<:Real} = nothing,
@@ -264,42 +349,49 @@ function init(data::AbstractVector{T};
               nbins::Union{Nothing,<:Integer} = nothing,
               kwargs...) where {T}
 
-    # Handle the option to provide either a single bounds argument of the triple of lo, hi,
+    options = UnivariateKDEInfo{T}()
+
+    # Handle the option to provide either a single bounds argument or the triple of lo, hi,
     # and boundary
     if !isnothing(bounds) && (!isnothing(lo) || !isnothing(hi))
         _warn_bounds_override(bounds, lo, hi)
     end
-    lo, hi, boundary = let _bounds = KernelDensityEstimation.bounds
-        _bounds(data, isnothing(bounds) ? (lo, hi, boundary) : bounds)::Tuple{T,T,Boundary.T}
-    end
+    options.bounds = bounds′ = isnothing(bounds) ? (lo, hi, boundary) : bounds
+
+    # Convert the input bounds to the required canonical representation
+    lo′, hi′, boundary′ = KernelDensityEstimation.bounds(data, bounds′)::Tuple{T,T,Boundary.T}
+    options.boundary = boundary′
+    options.interval = (lo′, hi′)
 
     # Estimate bandwidth from data, as necessary
-    bandwidth = bandwidth isa Real ? convert(T, bandwidth) :
-                KernelDensityEstimation.bandwidth(bandwidth, data, lo, hi, boundary)::T
-    bwratio = convert(T, bwratio)
+    if bandwidth isa AbstractBandwidthEstimator
+        options.bandwidth_alg = bandwidth
+        bandwidth′ = KernelDensityEstimation.bandwidth(bandwidth, data, lo′, hi′, boundary′)::T
+    else
+        bandwidth′ = convert(T, bandwidth)
+    end
+    options.bandwidth = bandwidth′
+    options.bwratio = bwratio′ = convert(T, bwratio)::T
 
     # Then expand the bounds if the bound(s) are open
-    lo -= (boundary == Closed || boundary == ClosedLeft) ? zero(T) : 8bandwidth
-    hi += (boundary == Closed || boundary == ClosedRight) ? zero(T) : 8bandwidth
+    lo′ -= (boundary′ == Closed || boundary′ == ClosedLeft) ? zero(T) : 8bandwidth′
+    hi′ += (boundary′ == Closed || boundary′ == ClosedRight) ? zero(T) : 8bandwidth′
+    options.lo = lo′
+    options.hi = hi′
 
     # Calculate the number of bins to use in the histogram
     if isnothing(nbins)
-        nbins = max(1, round(Int, bwratio * (hi - lo) / bandwidth))
+        nbins′ = max(1, round(Int, bwratio′ * (hi′ - lo′) / bandwidth′))
     else
-        nbins = Int(nbins)
-        nbins > 0 || throw(ArgumentError("nbins must be a positive integer"))
+        nbins′ = Int(nbins)
+        nbins′ > 0 || throw(ArgumentError("nbins must be a positive integer"))
     end
+    options.nbins = nbins′
 
     # Warn if we received any parameters which should have been consumed earlier in
     # the pipeline
     if length(kwargs) > 0
         _warn_unused(kwargs)
-    end
-
-    options = let lo = lo::T, hi = hi::T, nbins = nbins::Int,
-                  boundary = boundary::Boundary.T, bandwidth = bandwidth::T,
-                  bwratio = bwratio::T
-        (; lo, hi, nbins, boundary, bandwidth, bwratio)
     end
     return data, options
 end
@@ -374,18 +466,17 @@ function _kdebin(::LinearBinning, data, lo, hi, Δx, nbins)
 end
 
 function estimate(method::AbstractBinningKDE, data; kwargs...)
-    data, options = init(data; kwargs...)
-    lo, hi, nbins = options.lo, options.hi, options.nbins
+    data, info = init(data; kwargs...)
+    lo, hi, nbins = info.lo, info.hi, info.nbins
 
-    T = eltype(data)
     edges = range(lo, hi, length = nbins + 1)
     Δx = hi > lo ? step(edges) : one(lo)  # 1 bin if histogram has zero width
     centers = edges[2:end] .- Δx / 2
 
     ν, f = _kdebin(method, data, lo, hi, Δx, nbins)
     estim = UnivariateKDE(centers, f)
-    kernel = UnivariateKDE(range(zero(T), zero(T), length = 1), [one(T)])
-    info = UnivariateKDEInfo(; npoints = ν, options.boundary, options.bandwidth, kernel)
+    info.kernel = UnivariateKDE(range(zero(lo), zero(lo), length = 1), [one(lo)])
+    info.npoints = ν
     return estim, info
 end
 
@@ -425,12 +516,11 @@ function estimate(::BasicKDE, binned::UnivariateKDE, info::UnivariateKDEInfo)
     #      easy route and just post-normalize a simpler calculation.
     kernel = exp.(-(xx ./ bw) .^ 2 ./ 2)
     kernel ./= sum(kernel)
+    info.kernel = UnivariateKDE(xx, kernel)
 
     # convolve the data with the kernel to construct a density estimate
     f̂ = conv(f, kernel, :same)
     estim = UnivariateKDE(x, f̂)
-    info = UnivariateKDEInfo(; info.npoints, info.bandwidth, info.boundary,
-                               kernel = UnivariateKDE(xx, kernel))
     return estim, info
 end
 
