@@ -36,10 +36,10 @@ rv_norm_long = rv_norm_σ .* randn(Random.seed!(Random.default_rng(), 1234), Int
         @test @inferred(init([1.0]; kws...)) isa Tuple{Vector{Float64},NT}
     end
     # also test that default values work
-    @test @inferred(init([1.0])) isa Tuple{Vector{Float64},NT}
+    @test @inferred(init([1.0], bandwidth = 1.0)) isa Tuple{Vector{Float64},NT}
 
     # Unused options that make it down to the option processing step log a warning message
-    @test_logs (:warn, "Unused keyword argument(s)") KDE.init([1.0], unusedarg=true)
+    @test_logs (:warn, "Unused keyword argument(s)") KDE.init([1.0], bandwidth = 1.0, unusedarg=true)
 end
 
 @testset "Bounds Handling" begin
@@ -86,6 +86,7 @@ end
 end
 
 @testset "Simple Binning" begin
+    kws = (; bandwidth = KDE.SilvermanBandwidth())
     # raw data
     v₁ = Float64[0.5, 1.5, 1.5, 2.5, 2.5, 2.5, 3.5, 3.5, 4.5]
     # non-zero elements of the probability **mass** function
@@ -97,7 +98,8 @@ end
     b₀ = σ̂ * (4//3 / ν)^(1/5)  # Silverman's rule
 
     # prepared using known limits and number of bins
-    k₁, info = estimate(KDE.HistogramBinning(), v₁; cover = KDE.Closed, lo = 0, hi = 5, nbins = 5)
+    k₁, info = estimate(KDE.HistogramBinning(), v₁; cover = KDE.Closed,
+                        lo = 0, hi = 5, nbins = 5, kws...)
     Δx = step(k₁.x)
     @test k₁.x == edges2centers(0.0:1.0:5.0)
     @test isapprox(k₁.f .* Δx, h₁)
@@ -105,7 +107,8 @@ end
     @test info.bandwidth ≈ b₀
 
     # prepared with known number of bins, but automatically selected bounds
-    k₂, info = estimate(KDE.HistogramBinning(), v₁; cover = KDE.Closed, nbins = 5)
+    k₂, info = estimate(KDE.HistogramBinning(), v₁; cover = KDE.Closed,
+                        nbins = 5, kws...)
     Δx = step(k₂.x)
     @test k₂.x == edges2centers(range(0.5, 4.5, length = 5 + 1))
     @test isapprox(k₂.f .* Δx, h₁)
@@ -113,7 +116,8 @@ end
     @test info.bandwidth ≈ b₀
 
     # prepared with unknown number of bins, but known bounds
-    k₃, info = estimate(KDE.HistogramBinning(), v₁; cover = KDE.Closed, lo = 0, hi = 5)
+    k₃, info = estimate(KDE.HistogramBinning(), v₁; cover = KDE.Closed,
+                        lo = 0, hi = 5, kws...)
     Δx = step(k₃.x)
     @test k₃.x == edges2centers(range(0.0, 5.0, length = round(Int, 5 / b₀) + 1))
     @test isapprox(filter(!iszero, k₃.f) .* Δx, h₁)
@@ -121,14 +125,15 @@ end
     @test info.bandwidth ≈ b₀
 
     # prepared with unknown limits and number of bins
-    k₄, info = estimate(KDE.HistogramBinning(), v₁; cover = KDE.Closed)
+    k₄, info = estimate(KDE.HistogramBinning(), v₁; cover = KDE.Closed, kws...)
     Δx = step(k₄.x)
     @test isapprox(filter(!iszero, k₄.f) .* Δx, h₁)
     @test sum(k₄.f) * Δx ≈ 1.0
     @test info.bandwidth ≈ b₀
 
     # prepared using an alternative sampling density (compared to previous)
-    k₅, info = estimate(KDE.HistogramBinning(), v₁; cover = KDE.Closed, bwratio = 16)
+    k₅, info = estimate(KDE.HistogramBinning(), v₁; cover = KDE.Closed,
+                        bwratio = 16, kws...)
     Δx = step(k₅.x)
     @test step(k₅.x) < step(k₄.x)
     @test isapprox(filter(!iszero, k₅.f) .* Δx, h₁)
@@ -136,7 +141,7 @@ end
     @test info.bandwidth ≈ b₀
 
     # make sure errors do not occur when uniform data is provided
-    let (k, info) = estimate(KDE.HistogramBinning(), ones(100); cover = KDE.Closed)
+    let (k, info) = estimate(KDE.HistogramBinning(), ones(100); cover = KDE.Closed, kws...)
         @test length(k.x) == 1
         @test isfinite(info.bandwidth) && !iszero(info.bandwidth)
         @test step(k.x) == 0.0  # zero-width bin
@@ -144,11 +149,11 @@ end
     end
 
     # make sure the bandwidth argument is converted to the appropriate common type
-    _, info = estimate(KDE.HistogramBinning(), v₁)
+    _, info = estimate(KDE.HistogramBinning(), v₁; kws...)
     @test info.bandwidth isa Float64
     _, info = estimate(KDE.HistogramBinning(), v₁; bandwidth = 1)  # explicit but not same type
     @test info.bandwidth isa Float64
-    _, info = estimate(KDE.HistogramBinning(), Float32.(v₁))
+    _, info = estimate(KDE.HistogramBinning(), Float32.(v₁); kws...)
     @test info.bandwidth isa Float32
     _, info = estimate(KDE.HistogramBinning(), Float32.(v₁); bandwidth = 1)
     @test info.bandwidth isa Float32
@@ -156,7 +161,7 @@ end
 
     expT = Tuple{KDE.UnivariateKDE{Float64,<:AbstractRange{Float64},<:AbstractVector{Float64}},
                  KDE.UnivariateKDEInfo{Float64}}
-    @test @inferred(estimate(KDE.HistogramBinning(), [1.0, 2.0]; nbins = 2)) isa expT
+    @test @inferred(estimate(KDE.HistogramBinning(), [1.0, 2.0]; nbins = 2, kws...)) isa expT
 end
 
 @testset "Basic Kernel Density Estimate" begin
@@ -189,21 +194,23 @@ end
     @test all(isapprox.(f1 .* step(x), g, atol = 1e-5))
     @test all(isapprox.(f2 .* step(x), g, atol = 1e-5))
 
+    kws = (; bandwidth = KDE.SilvermanBandwidth())
+
     # On an open interval, probability should be conserved.
-    k, _ = estimate(KDE.BasicKDE(), v_uniform, cover = KDE.Open)
+    k, _ = estimate(KDE.BasicKDE(), v_uniform; cover = KDE.Open, kws...)
     @test sum(k.f) * step(k.x) ≈ 1.0
 
     # But on (semi-)closed intervals, the norm will drop
-    kl, _ = estimate(KDE.BasicKDE(), v_uniform, cover = KDE.ClosedLeft)
+    kl, _ = estimate(KDE.BasicKDE(), v_uniform; cover = KDE.ClosedLeft, kws...)
     nl = sum(kl.f) * step(kl.x)
     @test nl < 0.96
 
-    kr, _ = estimate(KDE.BasicKDE(), v_uniform, cover = KDE.ClosedRight)
+    kr, _ = estimate(KDE.BasicKDE(), v_uniform; cover = KDE.ClosedRight, kws...)
     nr = sum(kr.f) * step(kr.x)
     @test nr < 0.96
     @test nl ≈ nr  # should be nearly symmetric
 
-    kc, _ = estimate(KDE.BasicKDE(), v_uniform, cover = KDE.Closed)
+    kc, _ = estimate(KDE.BasicKDE(), v_uniform; cover = KDE.Closed, kws...)
     nc = sum(kc.f) * step(kc.x)
     @test nc < 0.91
 end

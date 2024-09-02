@@ -173,7 +173,7 @@ function init(data::AbstractVector{T};
               hi::Union{Nothing,<:Real} = nothing,
               nbins::Union{Nothing,<:Integer} = nothing,
               cover::Union{Symbol,Cover.T} = :open,
-              bandwidth::Union{<:Real,<:AbstractBandwidthEstimator} = SilvermanBandwidth(),
+              bandwidth::Union{<:Real,<:AbstractBandwidthEstimator} = ISJBandwidth(),
               bwratio::Real = 1, kwargs...) where {T}
     # Convert from symbol to type, if necessary
     cover = to_cover(cover)::Cover.T
