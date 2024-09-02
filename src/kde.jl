@@ -203,7 +203,11 @@ function init(data::AbstractVector{T};
         _warn_unused(kwargs)
     end
 
-    return data, (; lo, hi, nbins, cover, bandwidth, bwratio)
+    options = let lo = lo::T, hi = hi::T, nbins = nbins::Int, cover = cover::Cover.T,
+                  bandwidth = bandwidth::T, bwratio = bwratio::T
+        (; lo, hi, nbins, cover, bandwidth, bwratio)
+    end
+    return data, options
 end
 
 

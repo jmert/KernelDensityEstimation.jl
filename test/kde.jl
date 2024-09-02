@@ -312,7 +312,7 @@ end
             # Check that the implementation of _ISJ.∂ʲ agrees with the analytic answer we
             # can derive for a Gaussian distribution
             h₀, σ₀, npts = 1.0, 2.1, 512  # arbitrary
-            x = range(-6σ₀, 6σ₀, npts)
+            x = range(-6σ₀, 6σ₀, length = npts)
             Δx, g = step(x), gaussian(x, σ₀)
             # scale everything to effectively be Δx == 1, to match the internal assumption of the
             # implementation of ∂ʲ
@@ -337,7 +337,7 @@ end
         # Given a bounded (truncated) distribution, the estimator should give a bandwidth
         # smaller if the cover is incorrectly declared as open versus [half-]closed.
         let σ = rv_norm_σ
-            v = filter(>(0), view(rv_norm_long, 1:10_000))
+            v = filter(>(0), view(rv_norm_long, 1:20_000))
             open_h = KDE.bandwidth(ISJBandwidth(), v, 0.0, 6.0σ, KDE.Open)
             close_h = KDE.bandwidth(ISJBandwidth(), v, 0.0, 6.0σ, KDE.ClosedLeft)
             @test 5open_h < close_h
