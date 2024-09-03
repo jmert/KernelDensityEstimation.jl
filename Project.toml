@@ -12,10 +12,16 @@ Roots = "f2b01f46-fcfa-551c-844a-d8ac1e96c665"
 
 [weakdeps]
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+UnicodePlots = "b8865327-cd53-5732-bb35-84acbb429228"
 
 [extensions]
 KDEDistributionsExt = ["Distributions"]
+KDEUnicodePlotsExt = ["UnicodePlots"]
+
+[extras]
+UnicodePlots = "b8865327-cd53-5732-bb35-84acbb429228"
 
 [compat]
-julia = "1.6"
 Roots = "2.1.7"
+UnicodePlots = "3"
+julia = "1.6"

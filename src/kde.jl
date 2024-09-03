@@ -184,6 +184,23 @@ struct UnivariateKDE{T,R<:AbstractRange{T},V<:AbstractVector{T}} <: AbstractKDE{
     f::V
 end
 
+function Base.show(io::IO, K::UnivariateKDE{T}) where {T}
+    if get(io, :compact, false)::Bool
+        print(io, UnivariateKDE, '{', T, "}(…)")
+    else
+        if get(io, :limit, false)::Bool
+            print(io, UnivariateKDE, '{', T, '}', '(')
+            io′ = IOContext(io, :compact => true)
+            print(io′, first(K.x), ':', step(K.x), ':', last(K.x), ", ")
+            show(io′, K.f)
+            print(io, ')')
+        else
+            invoke(show, Tuple{typeof(io), Any}, io, K)
+        end
+    end
+end
+
+
 """
     UnivariateKDEInfo{T} <: AbstractKDEInfo{T}
 
@@ -266,19 +283,20 @@ function Base.show(io::IO, info::UnivariateKDEInfo)
         print(io, "(…)")
     else
         first = true
-        print(io, "(")
+        print(io, '(')
         for fld in fieldnames(typeof(info))
             !first && print(io, ", ")
             print(io, fld, " = ")
             show(io, getfield(info, fld))
             first = false
         end
-        print(io, ")")
+        print(io, ')')
     end
 end
+
 function Base.show(io::IO, ::MIME"text/plain", info::UnivariateKDEInfo)
     show(io, typeof(info))
-    println(io, ":")
+    println(io, ':')
 
     wd = textwidth("bandwidth_alg")
     for fld in fieldnames(typeof(info))
@@ -287,6 +305,7 @@ function Base.show(io::IO, ::MIME"text/plain", info::UnivariateKDEInfo)
         println(io)
     end
 end
+
 
 # define basic iteration syntax to destructure the contents of a UnivariateKDE;
 #   note that property destructuring syntax should be preferred, but that is not available

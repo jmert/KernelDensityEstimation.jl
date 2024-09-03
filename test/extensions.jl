@@ -35,3 +35,21 @@ using Random
     @test first(K.x) ≈ minimum(D) + step(K.x) / 2
     @test last(K.x) ≈ maximum(D) - step(K.x) / 2
 end
+
+@testset "UnicodePlots" begin
+    import UnicodePlots
+
+    io = IOBuffer()
+    ht, wd = 50, 120
+    ioc = IOContext(io, :displaysize => (ht, wd))
+
+    K = kde(collect(0:0.01:1), bandwidth = 0.5, boundary = :closed)
+    show(ioc, MIME"text/plain"(), K)
+    str = String(take!(io))
+
+    let S = split(str, '\n')
+        @test all(length(s) <= wd for s in S)
+        @test length(S) < ht
+    end
+    @test any(!isascii, str)
+end
