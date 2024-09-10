@@ -53,4 +53,5 @@ AbstractKDEMethod
 boundary
 bounds
 estimate
+estimator_order
 ```

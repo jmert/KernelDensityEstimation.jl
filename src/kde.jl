@@ -149,6 +149,14 @@ form of a vector of `data` or a prior density estimate and its corresponding pip
 function estimate end
 
 """
+    p = estimator_order(::Type{<:AbstractKDEMethod})
+
+The bias scaning of the density estimator method, where a return value of `p` corresponds to
+bandwidth-dependent biases of the order ``\\mathcal{O}(h^{2p})``.
+"""
+function estimator_order end
+
+"""
     lo, hi, boundary = bounds(data::AbstractVector{T}, spec) where {T}
 
 Determine the appropriate interval, from `lo` to `hi` with boundary style `boundary`, for
@@ -211,6 +219,9 @@ entrypoint parameters and some internal state variables.
 
 ## Fields
 
+- `method::`[`AbstractKDEMethod`](@ref):
+  The estimation method used to generate the KDE.
+
 - `bounds::Any`:
   The bounds specification of the estimate as passed to [`init()`](@ref), prior to making
   it concrete via calling [`bounds()`](@ref).
@@ -226,6 +237,10 @@ entrypoint parameters and some internal state variables.
   The concrete boundary condition assumed in the density estimate after calling
   [`boundary()`](@ref) with the value of the `.bounds` field.
   Defaults to [`Open`](@ref Boundary).
+
+- `npoints::Int`:
+  The number of values in the original data vector.
+  Defaults to `-1`.
 
 - `bandwidth_alg::Union{Nothing,`[`AbstractBandwidthEstimator`](@ref)`}`:
   Algorithm used to estimate an appropriate bandwidth, if a concrete value was not
@@ -255,25 +270,22 @@ entrypoint parameters and some internal state variables.
   The number of bins used in the histogram at the beinning of the density estimatation.
   Defaults to `-1`.
 
-- `npoints::Int`:
-  The number of values in the original data vector.
-  Defaults to `-1`.
-
 - `kernel::Union{Nothing,`[`UnivariateKDE`](@ref)`{T}}`:
   The convolution kernel used to process the density estimate.
   Defaults to `nothing`.
 """
 Base.@kwdef mutable struct UnivariateKDEInfo{T} <: AbstractKDEInfo{T}
+    method::AbstractKDEMethod
     bounds::Any = nothing
     interval::Tuple{T,T} = (zero(T), zero(T))
     boundary::Boundary.T = Open
+    npoints::Int = -1
     bandwidth_alg::Union{Nothing,AbstractBandwidthEstimator} = nothing
     bandwidth::T = zero(T)
     bwratio::T = one(T)
     lo::T = zero(T)
     hi::T = zero(T)
     nbins::Int = -1
-    npoints::Int = -1
     kernel::Union{Nothing,UnivariateKDE{T}} = nothing
 end
 
@@ -298,7 +310,7 @@ function Base.show(io::IO, ::MIME"text/plain", info::UnivariateKDEInfo)
     show(io, typeof(info))
     println(io, ':')
 
-    wd = textwidth("bandwidth_alg")
+    wd = textwidth("estimator_order")
     for fld in fieldnames(typeof(info))
         print(io, lpad(fld, wd + 2), ": ")
         show(io, getfield(info, fld))
@@ -352,23 +364,27 @@ bounds(data, spec::Tuple{Union{<:Real,Nothing},
 @noinline _warn_unused(kwargs) = @warn "Unused keyword argument(s)" kwargs=kwargs
 
 """
-    data, details = init(data::AbstractVector{T};
-                         lo = nothing, hi = nothing, boundary = nothing, bounds = nothing,
-                         nbins::Union{Nothing,<:Integer} = nothing,
+    data, details = init(method::K, data::AbstractVector{T};
+                         lo::Union{Nothing,<:Real} = nothing,
+                         hi::Union{Nothing,<:Real} = nothing,
+                         boundary::Union{Symbol,Boundary.T} = :open,
+                         bounds = nothing,
                          bandwidth::Union{<:Real,<:AbstractBandwidthEstimator} = ISJBandwidth(),
-                         bwratio::Real = 1, kwargs...) where {T}
+                         bwratio::Real = 1,
+                         nbins::Union{Nothing,<:Integer} = nothing,
+                         kwargs...) where {K<:AbstractKDEMethod, T}
 """
-function init(data::AbstractVector{T};
+function init(method::K, data::AbstractVector{T};
               lo::Union{Nothing,<:Real} = nothing,
               hi::Union{Nothing,<:Real} = nothing,
               boundary::Union{Symbol,Boundary.T} = :open,
               bounds = nothing,
               bandwidth::Union{<:Real,<:AbstractBandwidthEstimator} = ISJBandwidth(),
-              bwratio::Real = 1,
+              bwratio::Real = 8,
               nbins::Union{Nothing,<:Integer} = nothing,
-              kwargs...) where {T}
-
-    options = UnivariateKDEInfo{T}()
+              kwargs...) where {K<:AbstractKDEMethod, T}
+    @nospecialize method
+    options = UnivariateKDEInfo{T}(; method)
 
     # Handle the option to provide either a single bounds argument or the triple of lo, hi,
     # and boundary
@@ -382,10 +398,22 @@ function init(data::AbstractVector{T};
     options.boundary = boundary′
     options.interval = (lo′, hi′)
 
+    # Calculate (or count) the number of data points in the interval
+    ν = let l = lo′, h = hi′
+        count(x -> l ≤ x ≤ h, data)
+    end
+    options.npoints = ν
+
     # Estimate bandwidth from data, as necessary
     if bandwidth isa AbstractBandwidthEstimator
         options.bandwidth_alg = bandwidth
         bandwidth′ = KernelDensityEstimation.bandwidth(bandwidth, data, lo′, hi′, boundary′)::T
+        m = estimator_order(typeof(method))
+        # Use a larger bandwidth for higher-order estimators which achieve lower bias
+        # See Lewis (2019) Eqn 35 and Footnote 10.
+        if m > 1
+            bandwidth′ *= T(ν) ^ (1 // 5 - 1 // (4m + 1))
+        end
     else
         bandwidth′ = convert(T, bandwidth)
     end
@@ -414,6 +442,9 @@ function init(data::AbstractVector{T};
     end
     return data, options
 end
+
+
+estimate(M::AbstractKDEMethod, v; kwargs...) = estimate(M, init(M, v; kwargs...)...)
 
 
 """
@@ -484,8 +515,9 @@ function _kdebin(::LinearBinning, data, lo, hi, Δx, nbins)
     return ν, f
 end
 
-function estimate(method::AbstractBinningKDE, data; kwargs...)
-    data, info = init(data; kwargs...)
+estimator_order(::Type{<:AbstractBinningKDE}) = 0
+
+function estimate(method::AbstractBinningKDE, data::AbstractVector, info::UnivariateKDEInfo)
     lo, hi, nbins = info.lo, info.hi, info.nbins
 
     edges = range(lo, hi, length = nbins + 1)
@@ -498,6 +530,7 @@ function estimate(method::AbstractBinningKDE, data; kwargs...)
     info.npoints = ν
     return estim, info
 end
+
 
 """
     BasicKDE{M<:AbstractBinningKDE} <: AbstractKDEMethod
@@ -515,8 +548,10 @@ Base.@kwdef struct BasicKDE{M<:AbstractBinningKDE} <: AbstractKDEMethod
     binning::M = HistogramBinning()
 end
 
-function estimate(method::BasicKDE, data; bwratio = 2, kwargs...)
-    binned, info = estimate(method.binning, data; bwratio, kwargs...)
+estimator_order(::Type{<:BasicKDE}) = 1
+
+function estimate(method::BasicKDE, data::AbstractVector, info::UnivariateKDEInfo)
+    binned, info = estimate(method.binning, data, info)
     return estimate(method, binned, info)
 end
 function estimate(::BasicKDE, binned::UnivariateKDE, info::UnivariateKDEInfo)
@@ -563,8 +598,10 @@ Base.@kwdef struct LinearBoundaryKDE{M<:AbstractBinningKDE} <: AbstractKDEMethod
     binning::M = HistogramBinning()
 end
 
-function estimate(method::LinearBoundaryKDE, data; bwratio = 8, kwargs...)
-    binned, info = estimate(method.binning, data; bwratio, kwargs...)
+estimator_order(::Type{<:LinearBoundaryKDE}) = 1
+
+function estimate(method::LinearBoundaryKDE, data::AbstractVector, info::UnivariateKDEInfo)
+    binned, info = estimate(method.binning, data, info)
     return estimate(method, binned, info)
 end
 function estimate(method::LinearBoundaryKDE, binned::UnivariateKDE, info::UnivariateKDEInfo)
@@ -625,18 +662,23 @@ Base.@kwdef struct MultiplicativeBiasKDE{B<:AbstractBinningKDE,M<:AbstractKDEMet
     method::M = LinearBoundaryKDE()
 end
 
-function estimate(method::MultiplicativeBiasKDE, data; bwratio = 8, kwargs...)
+estimator_order(::Type{<:MultiplicativeBiasKDE}) = 2
+
+function estimate(method::MultiplicativeBiasKDE, data::AbstractVector, info::UnivariateKDEInfo)
+    binned, info = estimate(method.binning, data, info)
+    return estimate(method, binned, info)
+end
+function estimate(method::MultiplicativeBiasKDE, binned::UnivariateKDE, info::UnivariateKDEInfo)
     # generate pilot KDE
-    base, info = estimate(method.binning, data; bwratio, kwargs...)
-    pilot, info = estimate(method.method, base, info)
+    pilot, info = estimate(method.method, binned, info)
 
     # use the pilot KDE to flatten the unsmoothed histogram
     nonzero(x) = iszero(x) ? one(x) : x
     pilot.f .= nonzero.(pilot.f)
-    base.f ./= pilot.f
+    binned.f ./= pilot.f
 
     # then run KDE again on the flattened distribution
-    iter, _ = estimate(method.method, base, info)
+    iter, _ = estimate(method.method, binned, info)
 
     # unflatten and return
     iter.f .*= pilot.f
@@ -777,9 +819,9 @@ See also [`SilvermanBandwidth`](@ref)
 ## References
 - [Botev2010](@citet)
 """
-Base.@kwdef struct ISJBandwidth{B<:AbstractBinningKDE} <: AbstractBandwidthEstimator
+Base.@kwdef struct ISJBandwidth{B<:AbstractBinningKDE,R<:Real} <: AbstractBandwidthEstimator
     binning::B = HistogramBinning()
-    bwratio::Int = 2
+    bwratio::R = 2
     niter::Int = 7
 end
 
@@ -851,7 +893,9 @@ function kde(data;
              lo = nothing, hi = nothing, boundary = :open, bounds = nothing,
              bandwidth = ISJBandwidth(), bwratio = 8, nbins = nothing,
             )
-    estim, _ = estimate(method, data; lo, hi, boundary, bounds, nbins, bandwidth, bwratio)
+    data′, info = init(method, data;
+                       lo, hi, boundary, bounds, nbins, bandwidth, bwratio)
+    estim, _ = estimate(method, data′, info)
     # The pipeline is not perfectly norm-preserving, so renormalize before returning to
     # the user.
     estim.f ./= sum(estim.f) * step(estim.x)

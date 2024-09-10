@@ -28,14 +28,18 @@ rv_norm_long = rv_norm_σ .* randn(Random.seed!(Random.default_rng(), 1234), Int
         bandwidth in (KDE.SilvermanBandwidth(), 1.0),
         bwratio in (1,)
     ]
+    method = KDE.LinearBinning()
+
+    RT = Tuple{Vector{Float64}, KDE.UnivariateKDEInfo{Float64}}
     @testset "options = $kws" for kws in variations
-        @test @inferred(init([1.0]; kws...)) isa Tuple{Vector{Float64},KDE.UnivariateKDEInfo{Float64}}
+        @test @inferred(init(method, [1.0]; kws...)) isa RT
     end
     # also test that default values work
-    @test @inferred(init([1.0], bandwidth = 1.0)) isa Tuple{Vector{Float64},KDE.UnivariateKDEInfo{Float64}}
+    @test @inferred(init(method, [1.0], bandwidth = 1.0)) isa RT
 
     # Unused options that make it down to the option processing step log a warning message
-    @test_logs (:warn, "Unused keyword argument(s)") KDE.init([1.0], bandwidth = 1.0, unusedarg=true)
+    @test_logs((:warn, "Unused keyword argument(s)"),
+               KDE.init(method, [1.0], bandwidth = 1.0, unusedarg=true))
 end
 
 @testset "Bounds Handling" begin
@@ -111,14 +115,15 @@ end
     @test k1.x == k2.x && k1.f == k2.f
 
     # bounds= argument overrides lo=,hi=,boundary= and warns
+    M = KDE.LinearBinning()
     @test_logs((:warn, "Keyword `bounds` is overriding non-nothing `lo` and/or `hi`"),
-               KDE.init([1.0]; bounds = (0.0, 1.0, :open), lo = -1.0, bandwidth = 1.0))
+               KDE.init(M, [1.0]; bounds = (0.0, 1.0, :open), lo = -1.0, bandwidth = 1.0))
     @test_logs((:warn, "Keyword `bounds` is overriding non-nothing `lo` and/or `hi`"),
-               KDE.init([1.0]; bounds = (0.0, 1.0, :open), hi = 2.0, bandwidth = 1.0))
+               KDE.init(M, [1.0]; bounds = (0.0, 1.0, :open), hi = 2.0, bandwidth = 1.0))
 end
 
 @testset "Simple Binning" begin
-    kws = (; bandwidth = KDE.SilvermanBandwidth())
+    kws = (; bandwidth = KDE.SilvermanBandwidth(), bwratio = 1)
     # raw data
     v₁ = Float64[0.5, 1.5, 1.5, 2.5, 2.5, 2.5, 3.5, 3.5, 4.5]
     # non-zero elements of the probability **mass** function
@@ -163,8 +168,7 @@ end
     @test info.bandwidth ≈ b₀
 
     # prepared using an alternative sampling density (compared to previous)
-    k₅, info = estimate(KDE.HistogramBinning(), v₁; boundary = :closed, bwratio = 16,
-                        kws...)
+    k₅, info = estimate(KDE.HistogramBinning(), v₁; boundary = :closed, kws..., bwratio = 16)
     Δx = step(k₅.x)
     @test step(k₅.x) < step(k₄.x)
     @test isapprox(filter(!iszero, k₅.f) .* Δx, h₁)
@@ -340,7 +344,6 @@ end
             h = KDE.bandwidth(KDE.SilvermanBandwidth(), v, -6σ, 6σ, KDE.Open)
             @test t ≈ h atol=atol
         end
-
     end # Silverman Bandwidth
 
     @testset "ISJ Bandwidth" begin
@@ -386,4 +389,23 @@ end
         @test_throws(ErrorException("ISJ estimator failed to converge. More data is needed."),
                      KDE.bandwidth(ISJBandwidth(), [1.0, 1.1], 0.0, 2.0, KDE.Open))
     end  # ISJ Bandwidth
+
+
+    # "normal" estimators have a bias that scales like O(h^2); the histogramming steps are
+    # given a sentinel of 0 in order to indicate them as fundamentally different, but the
+    # difference has no impact on the automatic bandwidth.
+    @test KDE.estimator_order(KDE.HistogramBinning) == 0
+    @test KDE.estimator_order(KDE.LinearBinning) == 0
+    @test KDE.estimator_order(KDE.BasicKDE) == 1
+    @test KDE.estimator_order(KDE.LinearBoundaryKDE) == 1
+
+    # The bandwidth in the initialization step is made wider for the MultiplicativeBiasKDE
+    # method due to it being a higher-order estimator.
+    @test KDE.estimator_order(KDE.MultiplicativeBiasKDE) == 2
+    let N = 1_000, σ = rv_norm_σ, v = view(rv_norm_long, 1:N),
+        bandwidth = KDE.SilvermanBandwidth(), bounds = (-6σ, 6σ, KDE.Open)
+        h₀ = KDE.bandwidth(bandwidth, v, bounds...)
+        h₁ = KDE.init(KDE.MultiplicativeBiasKDE(), v; bandwidth, bounds)[2].bandwidth
+        @test h₁ / h₀ ≈ N ^ (1//5 - 1//9)
+    end
 end  # Bandwidth Estimators

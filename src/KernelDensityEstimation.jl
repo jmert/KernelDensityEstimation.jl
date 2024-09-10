@@ -7,7 +7,7 @@ include("kde.jl")
 
 
 using PrecompileTools: @setup_workload, @compile_workload
-@setup_workload begin
+@setup_workload let
     v32 = collect(range(1f0, 2f0, length = 4))
     v64 = collect(range(1e0, 2e0, length = 4))
     @compile_workload begin
