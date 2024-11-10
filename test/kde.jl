@@ -347,7 +347,7 @@ end
     end # Silverman Bandwidth
 
     @testset "ISJ Bandwidth" begin
-        import .KDE: ISJBandwidth
+        import .KDE: ISJBandwidth, SilvermanBandwidth
 
         @testset "Internals" begin
             # Check that the implementation of _ISJ.∂ʲ agrees with the analytic answer we
@@ -384,10 +384,19 @@ end
             @test 5open_h < close_h
         end
 
-        # The ISJ estimator fails for very small data sets. Check that the root finding
-        # throws a meaningful error.
+        # The ISJ estimator fails in some cases. Easy examples are:
+        #   1. Very small data sets.
+        args = ([1.0, 1.1], 0.0, 2.0, KDE.Open)
+        @test KDE.bandwidth(ISJBandwidth(fallback = true), args...) ==
+              KDE.bandwidth(SilvermanBandwidth(), args...)
         @test_throws(ErrorException("ISJ estimator failed to converge. More data is needed."),
-                     KDE.bandwidth(ISJBandwidth(), [1.0, 1.1], 0.0, 2.0, KDE.Open))
+                     KDE.bandwidth(ISJBandwidth(fallback = false), args...))
+        #   2. A uniform distribution on a finite interval.
+        args = (collect(0.0:0.1:1.0), 0.0, 1.0, KDE.Closed)
+        @test KDE.bandwidth(ISJBandwidth(fallback = true), args...) ==
+              KDE.bandwidth(SilvermanBandwidth(), args...)
+        @test_throws(ErrorException("ISJ estimator failed to converge. More data is needed."),
+                     KDE.bandwidth(ISJBandwidth(fallback = false), args...))
     end  # ISJ Bandwidth
 
 

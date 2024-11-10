@@ -8,8 +8,8 @@ include("kde.jl")
 
 using PrecompileTools: @setup_workload, @compile_workload
 @setup_workload let
-    v32 = collect(range(1f0, 2f0, length = 4))
-    v64 = collect(range(1e0, 2e0, length = 4))
+    v32 = collect(exp2.(range(-10f0, 0f0, length = 16)))
+    v64 = collect(exp2.(range(-10e0, 0e0, length = 16)))
     @compile_workload begin
         kde(v32)
         kde(v64)

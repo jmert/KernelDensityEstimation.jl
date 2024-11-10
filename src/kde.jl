@@ -783,9 +783,6 @@ module _ISJ
     function estimate(l::Int, ν::Int, f̂::Vector{T}, h₀::T) where {T<:Real}
         problem = ZeroProblem(fixed_point_equation, h₀)
         t = solve(problem; p = (l, ν, f̂))
-        if isnan(t)
-            throw(ErrorException("ISJ estimator failed to converge. More data is needed."))
-        end
         return t
     end
 end
@@ -816,6 +813,9 @@ See also [`SilvermanBandwidth`](@ref)
   Defaults to 7, in accordance with Botev et. al. who state that higher orders show little
   benefit.
 
+- `fallback::Bool`: Whether to fallback to the [`SilvermanBandwidth`](@ref) if the ISJ
+  estimator fails to converge. If `false`, an exception is thrown instead.
+
 ## References
 - [Botev2010](@citet)
 """
@@ -823,6 +823,7 @@ Base.@kwdef struct ISJBandwidth{B<:AbstractBinningKDE,R<:Real} <: AbstractBandwi
     binning::B = HistogramBinning()
     bwratio::R = 2
     niter::Int = 7
+    fallback::Bool = true
 end
 
 function bandwidth(isj::ISJBandwidth{<:Any}, v::AbstractVector{T},
@@ -848,7 +849,17 @@ function bandwidth(isj::ISJBandwidth{<:Any}, v::AbstractVector{T},
     f̂ = FFTW.r2r!(f, FFTW.REDFT10) .* Δx
 
     # Now we simply solve for the fixed-point solution:
-    return Δx * _ISJ.estimate(isj.niter, ν, f̂, h₀)
+    h = Δx * _ISJ.estimate(isj.niter, ν, f̂, h₀)
+
+    # Check that the fixed-point solver converged to a positive value
+    if isnan(h) || h < zero(T)
+        if isj.fallback
+            h = info.bandwidth  # fallback to the Silverman estimate
+        else
+            throw(ErrorException("ISJ estimator failed to converge. More data is needed."))
+        end
+    end
+    return h
 end
 
 
