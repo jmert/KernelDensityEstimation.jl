@@ -20,8 +20,8 @@ makedocs(
         "index.md",
         "tutorials.md",
         "howto.md",
+        "explain.md",
         "reference.md",
-        "explain.md"
     ],
     modules = [KernelDensityEstimation],
     doctest = doctest,
