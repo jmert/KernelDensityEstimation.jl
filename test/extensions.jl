@@ -36,6 +36,27 @@ using Random
     @test last(K.x) ≈ maximum(D) - step(K.x) / 2
 end
 
+@testset "Makie" begin
+    using CairoMakie
+
+    rv = rand(1000)
+    K = kde(rv, lo = 0.0, hi = 1.0, boundary = :closed)
+
+    # simply test that invocation is not an error
+    @test plot(K).plot isa Plot{lines}
+    @test lines(K).plot isa Plot{lines}
+    @test scatter(K).plot isa Plot{scatter}
+    @test stairs(K).plot isa Plot{stairs}
+
+    # stairs has special behavior; check that the converted data correctly closes the
+    # histogram
+    fig, ax, pl = stairs(K)
+    y = only(pl.converted)[]  # have to reach into a non-public field??
+    @test y[1] ≈ [0.0, 0.0] atol=eps()
+    @test y[end] ≈ [1.0, 0.0] atol=eps()
+    @test y[end][1] == y[end-1][1]
+end
+
 @testset "UnicodePlots" begin
     import UnicodePlots
 

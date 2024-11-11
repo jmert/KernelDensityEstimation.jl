@@ -1,4 +1,14 @@
+```@setup
+using CairoMakie
+update_theme!(size = (400, 300))
+```
+
 # How-to Guides
+
+```@contents
+Pages = ["howto.md"]
+Depth = 3
+```
 
 ## Extensions
 
@@ -32,6 +42,51 @@ chain = rand(prior, 200)
 # prior-based boundary information on left is same as explicit options on right
 kde(chain; bounds = prior) == kde(chain; lo = 0.0, boundary = :closedleft)
 ```
+
+
+### Makie.jl
+
+Plotting the [`UnivariateKDE`](@ref) object is natively supported within the
+[`Makie.jl`](https://juliahub.com/ui/Packages/General/Makie)
+system of packages.
+The density estimate is converted via the
+[`PointsBased`](https://docs.makie.org/stable/explanations/recipes#Multiple-Argument-Conversion-with-convert_arguments)
+trait and defaults to a line plot.
+
+Plotting via `stairs` is a special case, which correctly offsets the bin centers to the trailing bin edge (compatible
+with the default `step = :pre` behavior) and adds points to close the histogram with the x-axis.
+
+```@example ext_makie
+using KernelDensityEstimation: kde, LinearBinning
+using Random  # hide
+Random.seed!(100)  # hide
+
+# 500 samples from a Chisq(ν=4) distribution
+rv = dropdims(sum(abs2, randn(4, 500), dims=1), dims=1)
+nothing  # hide
+```
+
+```@example ext_makie
+using CairoMakie
+
+K = kde(rv; lo = 0.0, boundary = :closedleft)
+H = kde(rv; lo = 0.0, boundary = :closedleft,
+            bwratio = 1.0, method = LinearBinning())
+
+fig = Figure(size=(800, 300))
+ax1 = Axis(fig[1, 1], title="stairs", ylabel = "density", xlabel = "value")
+ax2 = Axis(fig[1, 2], title="lines")
+linkaxes!(ax1, ax2)
+hideydecorations!(ax2, grid = false, ticks = false)
+
+stairs!(ax1, H)
+lines!(ax2, K)
+
+save("ext_makie.svg", current_figure())  # hide
+nothing  # hide
+```
+
+![](ext_makie.svg)
 
 ### UnicodePlots.jl
 

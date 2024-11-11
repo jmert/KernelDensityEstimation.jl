@@ -12,16 +12,20 @@ Roots = "f2b01f46-fcfa-551c-844a-d8ac1e96c665"
 
 [weakdeps]
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
 UnicodePlots = "b8865327-cd53-5732-bb35-84acbb429228"
 
 [extensions]
 KDEDistributionsExt = ["Distributions"]
+KDEMakieExt = ["Makie"]
 KDEUnicodePlotsExt = ["UnicodePlots"]
-
-[extras]
-UnicodePlots = "b8865327-cd53-5732-bb35-84acbb429228"
 
 [compat]
 Roots = "2.1.7"
+Makie = "0.15, 0.16, 0.17, 0.18, 0.19, 0.20, 0.21"
 UnicodePlots = "3"
 julia = "1.6"
+
+[extras]
+Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
+UnicodePlots = "b8865327-cd53-5732-bb35-84acbb429228"
