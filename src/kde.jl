@@ -96,6 +96,9 @@ See also [`UnivariateKDE`](@ref)
 """
 abstract type AbstractKDE{T} end
 
+Base.eltype(::AbstractKDE{T}) where {T} = T
+
+
 """
     AbstractKDEInfo{T}
 
@@ -207,6 +210,9 @@ function Base.show(io::IO, K::UnivariateKDE{T}) where {T}
         end
     end
 end
+
+Base.:(==)(K1::UnivariateKDE, K2::UnivariateKDE) = K1.x == K2.x && K1.f == K2.f
+Base.hash(K::UnivariateKDE, h::UInt) = hash(K.f, hash(K.x, hash(:UnivariateKDE, h)))
 
 
 """

@@ -418,3 +418,22 @@ end
         @test h₁ / h₀ ≈ N ^ (1//5 - 1//9)
     end
 end  # Bandwidth Estimators
+
+@testset "Type Handling" begin
+    rv = view(rv_norm_long, 1:100)
+    K1 = kde(rv)
+
+    # Equality and hashing
+    K2 = kde(rv)
+    @test K1 !== K2
+    @test K1 == K2
+    @test hash(K1) == hash(K2)
+    K3 = kde(rv[1:50])
+    @test K1 !== K3
+    @test K1 != K3
+    @test hash(K1) != hash(K3)
+
+    K4 = kde(Float32.(rv))
+    @test eltype(K1) == eltype(K1.x) == eltype(K1.f) == Float64
+    @test eltype(K4) == eltype(K4.x) == eltype(K4.f) == Float32
+end
