@@ -29,3 +29,9 @@ makedocs(
     warnonly = true,
     plugins = [bib],
 )
+
+
+deploydocs(
+    repo = "github.com/jmert/KernelDensityEstimation.jl",
+    push_preview = false
+)

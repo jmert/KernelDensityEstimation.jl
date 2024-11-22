@@ -1,3 +1,6 @@
+```@meta
+CurrentModule = KernelDensityEstimation
+```
 ```@setup
 using CairoMakie
 update_theme!(size = (400, 300))
