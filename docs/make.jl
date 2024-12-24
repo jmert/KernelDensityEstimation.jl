@@ -7,7 +7,8 @@ doctest = "--fix"  in ARGS ? :fix :
 
 DocMeta.setdocmeta!(KernelDensityEstimation, :DocTestSetup, :(using KernelDensityEstimation); recursive=true)
 
-bib = CitationBibliography(joinpath(@__DIR__, "src", "refs.bib"))
+bib = CitationBibliography(joinpath(@__DIR__, "src", "refs.bib");
+                           style = :numeric)
 
 makedocs(
     format = Documenter.HTML(
@@ -18,10 +19,11 @@ makedocs(
     authors = "Justin Willmert",
     pages = [
         "index.md",
-        "tutorials.md",
-        "howto.md",
+        "userguide.md",
+        "extensions.md",
         "explain.md",
-        "reference.md",
+        "api.md",
+        "references.md",
     ],
     modules = [KernelDensityEstimation],
     doctest = doctest,

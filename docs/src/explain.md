@@ -97,9 +97,3 @@ through their visual impact on a few example distributions.
 ![](comparison_Uniform.svg)
 
 ## Bandwidth Estimators
-
-## References
-
-```@bibliography
-```
-

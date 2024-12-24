@@ -1,7 +1,12 @@
-# Reference
+# API
 
 ```@meta
 CurrentModule = KernelDensityEstimation
+```
+
+```@contents
+Pages = ["api.md"]
+Depth = 2
 ```
 
 ## User Interface

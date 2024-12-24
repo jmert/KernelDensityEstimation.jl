@@ -6,20 +6,18 @@ using CairoMakie
 update_theme!(size = (400, 300))
 ```
 
-# How-to Guides
+# Package Extensions
 
 ```@contents
-Pages = ["howto.md"]
-Depth = 3
+Pages = ["extensions.md"]
+Depth = 2
 ```
-
-## Extensions
 
 !!! important
 
     This section describes features that are only available when using Julia v1.9 or newer.
 
-### Distributions.jl
+## Distributions.jl
 
 A univariate distribution from
 [`Distributions.jl`](https://juliahub.com/ui/Packages/General/Distributions)
@@ -47,7 +45,7 @@ kde(chain; bounds = prior) == kde(chain; lo = 0.0, boundary = :closedleft)
 ```
 
 
-### Makie.jl
+## Makie.jl
 
 Plotting the [`UnivariateKDE`](@ref) object is natively supported within the
 [`Makie.jl`](https://juliahub.com/ui/Packages/General/Makie)
@@ -91,7 +89,7 @@ nothing  # hide
 
 ![](ext_makie.svg)
 
-### UnicodePlots.jl
+## UnicodePlots.jl
 
 For quick, approximate visualization of a density within the terminal, an extension is provided for the
 [`UnicodePlots.jl`](https://juliahub.com/ui/Packages/General/UnicodePlots)
@@ -109,4 +107,3 @@ Random.seed!(100)  # hide
 rv = dropdims(sum(abs2, randn(4, 500), dims=1), dims=1)
 K = kde(rv; lo = 0.0, boundary = :closedleft)
 ```
-

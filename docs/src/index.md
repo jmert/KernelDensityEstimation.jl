@@ -15,7 +15,8 @@ As of Nov 2024, much of the Julia ecosystem uses the
 [`KernelDensity.jl`](https://juliahub.com/ui/Packages/General/KernelDensity)
 package (possibly implicitly, such as through density plots in Makie.jl, StatsPlots.jl, etc).
 
-...
+Consider the following (toy) examples: one case where we have samples drawn from a Gaussian
+distribution, and a second where only the positive values are retained.
 
 ```@example example_truncate
 using Random
@@ -142,3 +143,9 @@ nothing  # hide
     save("example_kerneldensityestimation.svg", fig)  # hide
     nothing  # hide
     ```
+
+Most obviously, the truncated distribution retains its closed boundary condition at ``x = 0`` and does not suffer
+from the leakage and suppression of the peak that occurs with the `KernelDensity` estimator.
+Furthermore, both density curves are smoother due to use of higher-order estimators which simultaneously
+permit using [relatively] wider bandwidth kernels while retaining the shapes of peaks (and non-flat slopes at
+closed boundaries).
