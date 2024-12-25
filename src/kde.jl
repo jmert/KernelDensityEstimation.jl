@@ -471,8 +471,14 @@ See also [`HistogramBinning`](@ref)
 """
 struct LinearBinning <: AbstractBinningKDE end
 
-function _kdebin(::HistogramBinning, data, lo, hi, Δx, nbins)
+function _kdebin(::B, data, lo, hi, nbins) where B <: Union{HistogramBinning, LinearBinning}
     T = eltype(data)
+    if lo == hi
+        Δx = one(T)
+    else
+        Δx = (hi - lo) / nbins
+    end
+
     ν = 0
     f = zeros(T, nbins)
     for x in data
@@ -483,36 +489,18 @@ function _kdebin(::HistogramBinning, data, lo, hi, Δx, nbins)
         ii = unsafe_trunc(Int, zz) - ((hi > lo) & (x == hi))
         # N.B. ii is a 0-index offset
 
-        f[ii + 1] += one(T)
         ν += 1
-    end
-    w = inv(ν * Δx)
-    for ii in eachindex(f)
-        f[ii] *= w
-    end
-    return ν, f
-end
+        if B === HistogramBinning
+            f[ii + 1] += one(T)
+        elseif B === LinearBinning
+            ww = (zz - ii) - one(T) / 2  # signed distance from the bin center
+            off = ifelse(signbit(ww), -1, 1)  # adjascent bin direction
+            jj = clamp(ii + off, 0, nbins - 1)  # adj. bin, limited to in-bounds where outer half-bins do not share
 
-function _kdebin(::LinearBinning, data, lo, hi, Δx, nbins)
-    T = eltype(data)
-    ν = 0
-    f = zeros(T, nbins)
-    for x in data
-        lo ≤ x ≤ hi || continue  # skip out-of-bounds elements
-
-        # calculate bin index; subtraction of (x == hi) makes the last bin a closed bin
-        zz = (x - lo) / Δx
-        ii = unsafe_trunc(Int, zz) - ((hi > lo) & (x == hi))
-        # N.B. ii is a 0-index offset
-
-        ww = (zz - ii) - one(T) / 2  # signed distance from the bin center
-        off = ifelse(signbit(ww), -1, 1)  # adjascent bin direction
-        jj = clamp(ii + off, 0, nbins - 1)  # adj. bin, limited to in-bounds where outer half-bins do not share
-
-        ww = abs(ww)  # weights are positive
-        f[ii + 1] += one(T) - ww
-        f[jj + 1] += ww
-        ν += 1
+            ww = abs(ww)  # weights are positive
+            f[ii + 1] += one(T) - ww
+            f[jj + 1] += ww
+        end
     end
     w = inv(ν * Δx)
     for ii in eachindex(f)
@@ -525,13 +513,13 @@ estimator_order(::Type{<:AbstractBinningKDE}) = 0
 
 function estimate(method::AbstractBinningKDE, data::AbstractVector, info::UnivariateKDEInfo)
     lo, hi, nbins = info.lo, info.hi, info.nbins
+    ν, f = _kdebin(method, data, lo, hi, nbins)
 
     edges = range(lo, hi, length = nbins + 1)
     Δx = hi > lo ? step(edges) : one(lo)  # 1 bin if histogram has zero width
     centers = edges[2:end] .- Δx / 2
-
-    ν, f = _kdebin(method, data, lo, hi, Δx, nbins)
     estim = UnivariateKDE(centers, f)
+
     info.kernel = UnivariateKDE(range(zero(lo), zero(lo), length = 1), [one(lo)])
     info.npoints = ν
     return estim, info
