@@ -473,36 +473,59 @@ struct LinearBinning <: AbstractBinningKDE end
 
 function _kdebin(::B, data, lo, hi, nbins) where B <: Union{HistogramBinning, LinearBinning}
     T = eltype(data)
+    wd = hi - lo
+
+    # calculate Δx and Δs = 1/Δx, and use twice-precision-like steps to keep track of the
+    # residuals which were rounded away
     if lo == hi
-        Δx = one(T)
+        Δx = zero(T)
+        δx = zero(T)
+        Δs = one(T)
+        δs = zero(T)
     else
-        Δx = (hi - lo) / nbins
+        Δx = wd / T(nbins)
+        δx = fma(-Δx, T(nbins), wd) / T(nbins)
+        Δs = T(nbins) / wd
+        δs = fma(-Δs, wd, T(nbins)) / wd
     end
 
     ν = 0
     f = zeros(T, nbins)
     for x in data
         lo ≤ x ≤ hi || continue  # skip out-of-bounds elements
+        if x == hi
+            # handle the closed-right bound of the last bin specially
+            zz = T(nbins)
+            ii = nbins
+        else
+            # calculate fractional (0-indexed) bin position, using semi-extended precision
+            zz = Δs * (x - lo) + δs * (x - lo)
+            # truncate to integer (1-indexed) bin index
+            ii = unsafe_trunc(Int, zz) + 1
 
-        # calculate bin index; subtraction of (x == hi) makes the last bin a closed bin
-        zz = (x - lo) / Δx
-        ii = unsafe_trunc(Int, zz) - ((hi > lo) & (x == hi))
-        # N.B. ii is a 0-index offset
+            # despite the attempt to extend precision, values exactly equal to the ideal
+            # bin edges can still cause problems; compare the value against the
+            # next bin's edge value, and if x is not less than the edge, adjust the index
+            # up by one more.
+            ee = lo + Δx * ii + δx * ii
+            ii += x >= ee
+        end
 
         ν += 1
         if B === HistogramBinning
-            f[ii + 1] += one(T)
+            f[ii] += one(T)
         elseif B === LinearBinning
-            ww = (zz - ii) - one(T) / 2  # signed distance from the bin center
+            # calculate weight as relative distance from containing bin center
+            ww = (zz - ii + 1) - one(T) / 2
             off = ifelse(signbit(ww), -1, 1)  # adjascent bin direction
-            jj = clamp(ii + off, 0, nbins - 1)  # adj. bin, limited to in-bounds where outer half-bins do not share
+            jj = clamp(ii + off, 1, nbins)  # adj. bin, limited to in-bounds where outer half-bins do not share
 
             ww = abs(ww)  # weights are positive
-            f[ii + 1] += one(T) - ww
-            f[jj + 1] += ww
+            f[ii] += one(T) - ww
+            f[jj] += ww
         end
     end
-    w = inv(ν * Δx)
+    w = Δs / ν
     for ii in eachindex(f)
         f[ii] *= w
     end

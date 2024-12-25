@@ -199,6 +199,46 @@ end
     @test @inferred(estimate(KDE.HistogramBinning(), [1.0, 2.0]; nbins = 2, kws...)) isa expT
 end
 
+@testset "Histogramming Accuracy" begin
+    # This range is an example taken from Julia's test suite for its range handling,
+    # called out as having challenging values
+    r = 1.0:1/49:27.0
+    v = Vector(r)
+
+    # For regular histogram binning, using the bin edges as values must result in a uniform
+    # distribution except the last bin which is doubled (due to being closed on the right).
+    ν, H = KDE._kdebin(KDE.HistogramBinning(), v, first(r), last(r), length(r) - 1)
+    @test ν == length(r)
+    @test all(@view(H[1:end-1]) .== H[1])
+    @test H[end] == 2H[1]
+
+    # For linear binning, the first and last bins differ from the rest, getting all of the
+    # weight from the two edges but also gaining half a contribution from their (only)
+    # neighbors. (The remaining interior bins give up half of their weight but
+    # simultaneously gain from a neighbor, so they are unchanged.)
+    ν, H = KDE._kdebin(KDE.LinearBinning(), v, first(r), last(r), length(r) - 1)
+    @test ν == length(r)
+    @test all(@view(H[2:end-1]) .≈ H[2])
+    @test H[end] ≈ H[1]
+    @test H[1] ≈ 1.5H[2]
+
+    # A case where naively calculating the cell index and weight factors suffers from the
+    # limits of finite floating point calculations, e.g.
+    #
+    #     zz = (x - lo) / Δx  # fractional index
+    #     ii = trunc(Int, zz) - (x == hi)  # bin index, including right-closed last bin
+    #     ww = (zz - ii) - 0.5
+    #
+    # results in ww ≈ 1.5 due to the value of zz not being an integer despite x == hi
+    lo = 0.005653766369679568
+    hi = x = 0.006728850177869153
+    nbins = 122
+
+    _, H = KDE._kdebin(KDE.LinearBinning(), [x], lo, hi, nbins)
+    @test all(iszero, @view H[1:end-1])
+    @test H[end] > 0.0
+end
+
 @testset "Basic Kernel Density Estimate" begin
     nbins = 11  # use odd value to have symmetry
     nsamp = 10nbins
