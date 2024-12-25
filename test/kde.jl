@@ -177,7 +177,7 @@ end
 
     # make sure errors do not occur when uniform data is provided
     let (k, info) = estimate(KDE.HistogramBinning(), ones(100); boundary = :closed, kws...)
-        @test length(k.x) == 1
+        @test collect(k.x) == [1.0]
         @test isfinite(info.bandwidth) && !iszero(info.bandwidth)
         @test step(k.x) == 0.0  # zero-width bin
         @test sum(k.f) == 1.0  # like a Kronecker delta

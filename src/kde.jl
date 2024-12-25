@@ -538,9 +538,12 @@ function estimate(method::AbstractBinningKDE, data::AbstractVector, info::Univar
     lo, hi, nbins = info.lo, info.hi, info.nbins
     ν, f = _kdebin(method, data, lo, hi, nbins)
 
-    edges = range(lo, hi, length = nbins + 1)
-    Δx = hi > lo ? step(edges) : one(lo)  # 1 bin if histogram has zero width
-    centers = edges[2:end] .- Δx / 2
+    if lo == hi
+        centers = range(lo, hi, length = 1)
+    else
+        edges = range(lo, hi, length = nbins + 1)
+        centers = edges[2:end] .- step(edges) / 2
+    end
     estim = UnivariateKDE(centers, f)
 
     info.kernel = UnivariateKDE(range(zero(lo), zero(lo), length = 1), [one(lo)])
