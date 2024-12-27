@@ -477,3 +477,68 @@ end  # Bandwidth Estimators
     @test eltype(K1) == eltype(K1.x) == eltype(K1.f) == Float64
     @test eltype(K4) == eltype(K4.x) == eltype(K4.f) == Float32
 end
+
+@testset "Show" begin
+    K, info = estimate(KDE.BasicKDE(), @view rv_norm_long[1:100])
+    buf = IOBuffer()
+
+    @testset "UnivariateKDE" begin
+        # Check that compact-mode printing is shorter than full printing
+        show(IOContext(buf, :compact => true), K)
+        shortmsg = String(take!(buf))
+        show(IOContext(buf, :compact => false), K)
+        longmsg = String(take!(buf))
+        @test length(shortmsg) < length(longmsg)
+        @test occursin("…", shortmsg) && !occursin("…", longmsg)
+
+        # For the longer output, there's both a limited and unlimited variation. Again,
+        # check that the lengths differ as expected.
+        show(IOContext(buf, :compact => false, :limit => true), K)
+        limitlongmsg = String(take!(buf))
+        @test length(shortmsg) < length(limitlongmsg)
+        @test length(limitlongmsg) < length(longmsg)
+
+        # Verify the headers appear as expected
+        @test occursin("UnivariateKDE{Float64}", shortmsg)
+        @test occursin("UnivariateKDE{Float64,", longmsg)  # full parametric typing
+        @test occursin("UnivariateKDE{Float64}", limitlongmsg)
+    end
+
+    @testset "UnivariateKDEInfo" begin
+        # Check that compact-mode printing is shorter than full printing
+        show(IOContext(buf, :compact => true), info)
+        shortmsg = String(take!(buf))
+        show(IOContext(buf, :compact => false), info)
+        longmsg = String(take!(buf))
+        @test length(shortmsg) < length(longmsg)
+        @test occursin("…", shortmsg) && !occursin("…", longmsg)
+
+        # For the longer output, there's both a limited and unlimited variation. Again,
+        # check that the lengths differ as expected.
+        show(IOContext(buf, :compact => false, :limit => true), info)
+        limitlongmsg = String(take!(buf))
+        @test length(shortmsg) < length(limitlongmsg)
+        @test length(limitlongmsg) < length(longmsg)
+
+        # Verify the headers appear as expected
+        @test occursin("UnivariateKDEInfo{Float64}", shortmsg)
+        @test occursin("UnivariateKDEInfo{Float64}", longmsg)  # full parametric typing
+        @test occursin("UnivariateKDEInfo{Float64}", limitlongmsg)
+
+
+        # The three-arg version for text/plain output is more sophisticated
+        ioc = IOContext(buf, :displaysize => (50, 120), :limit => true)
+        show(ioc, MIME"text/plain"(), info)
+        pretty = String(take!(buf))
+        plines = split(strip(pretty), '\n')
+        header = popfirst!(plines)
+        # heading line contains type info
+        @test endswith(header, "UnivariateKDEInfo{Float64}:")
+        # fields are then properly padded
+        alignment = map(l -> findfirst(==(':'), l), plines)
+        @test all(==(alignment[1]), alignment)
+        # the sentinel width is properly kept up-to-date
+        padding = map(l -> findfirst(!=(' '), l) - 1, plines)
+        @test minimum(padding) == 2
+    end
+end

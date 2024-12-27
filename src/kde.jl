@@ -312,15 +312,16 @@ function Base.show(io::IO, info::UnivariateKDEInfo)
     end
 end
 
-function Base.show(io::IO, ::MIME"text/plain", info::UnivariateKDEInfo)
-    show(io, typeof(info))
-    println(io, ':')
+let wd = maximum(map(length ∘ string, fieldnames(UnivariateKDEInfo)))
+    function Base.show(io::IO, ::MIME"text/plain", info::UnivariateKDEInfo)
+        show(io, typeof(info))
+        println(io, ':')
 
-    wd = textwidth("estimator_order")
-    for fld in fieldnames(typeof(info))
-        print(io, lpad(fld, wd + 2), ": ")
-        show(io, getfield(info, fld))
-        println(io)
+        for fld in fieldnames(typeof(info))
+            print(io, lpad(fld, wd + 2), ": ")
+            show(io, getfield(info, fld))
+            println(io)
+        end
     end
 end
 
