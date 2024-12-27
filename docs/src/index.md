@@ -3,9 +3,13 @@
 ```@eval
 import Markdown
 readmetxt = read(joinpath(dirname(@__FILE__), "..", "..", "README.md"), String)
-# Documenter.jl needs the title in this file, so strip away the heading from the README
 readme = Markdown.parse(readmetxt)
-popfirst!(readme.content)
+
+# Keep the contents between the title heading and the first horizontal rule (exclusive)
+ii = findfirst(x -> x isa Markdown.Header{1}, readme.content)
+jj = findfirst(x -> x isa Markdown.HorizontalRule, readme.content)
+readme.content = readme.content[ii+1:jj-1]
+
 readme
 ```
 
