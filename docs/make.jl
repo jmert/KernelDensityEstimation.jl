@@ -10,6 +10,9 @@ DocMeta.setdocmeta!(KernelDensityEstimation, :DocTestSetup, :(using KernelDensit
 bib = CitationBibliography(joinpath(@__DIR__, "src", "refs.bib");
                            style = :numeric)
 
+showcases = map(ff -> joinpath("showcase", ff),
+                filter!(endswith(".md"), readdir(joinpath(@__DIR__, "src", "showcase"))))
+
 makedocs(
     format = Documenter.HTML(
         mathengine = Documenter.MathJax3(),
@@ -22,6 +25,7 @@ makedocs(
         "userguide.md",
         "extensions.md",
         "explain.md",
+        hide("showcase.md", showcases),
         "api.md",
         "references.md",
     ],
