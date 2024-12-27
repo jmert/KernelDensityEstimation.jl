@@ -27,6 +27,8 @@ import KernelDensityEstimation: conv
         @test conv(u, v, :full) ≈ [-2, 0, 15, 5, -9, 7, 6, 7, -1, 2]
         @test conv(u, v, :same) ≈ [15, 5, -9, 7, 6, 7, -1]
         @test conv(u, v, :valid) ≈ [5, -9, 7, 6]
+
+        @test conv(u, v) == conv(u, v, :full)
     end
 end
 
@@ -36,5 +38,9 @@ end
     end
     let u = Float32[1, 1, 1], v = Float64[1, 1, 0, 0, 0, 1, 1]
         @test @inferred(conv(u, v, :full)) isa Vector{Float64}
+    end
+
+    let u = ones(3), v = [1; zeros(5)]
+        @test_throws ArgumentError conv(u, v, :invalid)
     end
 end

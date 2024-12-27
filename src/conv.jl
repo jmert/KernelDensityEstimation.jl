@@ -18,8 +18,6 @@ function conv_range(n, m, shape::ConvShape.T)
         return cld(m + 1, 2) .+ (0:n-1)
     elseif shape === ConvShape.VALID
         return m:(n′-m+1)
-    else
-        throw(ArgumentError())
     end
 end
 
