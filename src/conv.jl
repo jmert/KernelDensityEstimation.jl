@@ -62,14 +62,6 @@ function replan_conv!(plan::ConvPlan{T}, K::AbstractVector) where {T}
     return plan
 end
 
-function replan_conv(plan::ConvPlan, K::AbstractVector)
-    K̂ = similar(plan.K̂)
-    f = similar(plan.f)
-    f̂ = similar(plan.f̂)
-    plan′ = typeof(plan)(plan.dims, K̂, f, f̂, plan.fwd, plan.rev)
-    return replan_conv!(plan′, K)
-end
-
 function plan_conv(f::AbstractVector{U}, K::AbstractVector{V}) where {U<:Real, V<:Real}
     T = promote_type(float(U), float(V))
     n, m = length(f), length(K)
