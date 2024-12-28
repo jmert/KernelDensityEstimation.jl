@@ -2,6 +2,21 @@ module KernelDensityEstimation
 
 export kde
 
+@static if VERSION >= v"1.11.0-DEV.469"
+    @eval $(Expr(:public,
+                 # KDE objects
+                 :AbstractKDE, :UnivariateKDE, :AbstractKDEInfo, :UnivariateKDEInfo,
+                 # KDE pipeline
+                 :AbstractKDEMethod, :AbstractBinningKDE, :HistogramBinning, :LinearBinning,
+                 :BasicKDE, :LinearBoundaryKDE, :MultiplicativeBiasKDE,
+                 # Bandwidth Estimators
+                 :ISJBandwidth, :SilvermanBandwidth,
+                 # Interfaces
+                 :Open, :Closed, :OpenLeft, :OpenRight, :ClosedLeft, :ClosedRight,
+                 :boundary, :bounds, :estimate, :estimator_order, :init
+                ))
+end
+
 include("conv.jl")
 include("kde.jl")
 
