@@ -17,8 +17,8 @@ Its main features (and limitations) are:
 This package largely implements the algorithms described by Lewis (2019)[^1]
 (and its corresponding Python package, [GetDist](https://pypi.org/project/getdist/)).
 
-[^1]: A. Lewis. _GetDist: a Python package for analysing Monte Carlo samples_, (2019)
-      arXiv: [1910.13970](https://doi.org/10.48550/arXiv.1910.13970).
+[^1]: A. Lewis. _GetDist: a Python package for analysing Monte Carlo samples_ (2019),
+      [arXiv:1910.13970](https://arxiv.org/abs/1910.13970).
 
 ---
 

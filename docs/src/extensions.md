@@ -10,7 +10,7 @@ update_theme!(size = (400, 300))
 
 ```@contents
 Pages = ["extensions.md"]
-Depth = 2
+Depth = 2:2
 ```
 
 !!! important

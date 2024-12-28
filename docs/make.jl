@@ -31,6 +31,7 @@ makedocs(
         "explain.md",
         hide("showcase.md", showcases),
         "api.md",
+        "releasenotes.md",
         "references.md",
     ],
     modules = [KernelDensityEstimation],

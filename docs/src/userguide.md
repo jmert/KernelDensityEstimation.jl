@@ -6,7 +6,7 @@ CurrentModule = KernelDensityEstimation
 
 ```@contents
 Pages = ["userguide.md"]
-Depth = 2
+Depth = 2:2
 ```
 
 ## Getting Started

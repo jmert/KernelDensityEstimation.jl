@@ -6,7 +6,7 @@ CurrentModule = KernelDensityEstimation
 
 ```@contents
 Pages = ["api.md"]
-Depth = 2
+Depth = 2:2
 ```
 
 ## User Interface

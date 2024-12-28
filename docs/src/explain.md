@@ -2,7 +2,7 @@
 
 ```@contents
 Pages = ["explain.md"]
-Depth = 2
+Depth = 2:2
 ```
 
 ## Estimator Pipeline
