@@ -17,7 +17,7 @@ Depth = 2
 
     This section describes features that are only available when using Julia v1.9 or newer.
 
-## Distributions.jl
+## [Distributions.jl](@id ext-distributions)
 
 A univariate distribution from
 [`Distributions.jl`](https://juliahub.com/ui/Packages/General/Distributions)
@@ -45,7 +45,7 @@ kde(chain; bounds = prior) == kde(chain; lo = 0.0, boundary = :closedleft)
 ```
 
 
-## Makie.jl
+## [Makie.jl](@id ext-makie)
 
 Plotting the [`UnivariateKDE`](@ref) object is natively supported within the
 [`Makie.jl`](https://juliahub.com/ui/Packages/General/Makie)
@@ -89,7 +89,7 @@ nothing  # hide
 
 ![](ext_makie.svg)
 
-## UnicodePlots.jl
+## [UnicodePlots.jl](@id ext-unicodeplots)
 
 For quick, approximate visualization of a density within the terminal, an extension is provided for the
 [`UnicodePlots.jl`](https://juliahub.com/ui/Packages/General/UnicodePlots)

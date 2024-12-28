@@ -1,5 +1,6 @@
 using Documenter
 using DocumenterCitations
+using DocumenterInterLinks
 using KernelDensityEstimation
 
 doctest = "--fix"  in ARGS ? :fix :
@@ -9,6 +10,9 @@ DocMeta.setdocmeta!(KernelDensityEstimation, :DocTestSetup, :(using KernelDensit
 
 bib = CitationBibliography(joinpath(@__DIR__, "src", "refs.bib");
                            style = :numeric)
+links = InterLinks(
+    "Julia" => "https://docs.julialang.org/en/v1/",
+)
 
 showcases = map(ff -> joinpath("showcase", ff),
                 filter!(endswith(".md"), readdir(joinpath(@__DIR__, "src", "showcase"))))
@@ -33,7 +37,7 @@ makedocs(
     doctest = doctest,
     remotes = nothing,
     warnonly = true,
-    plugins = [bib],
+    plugins = [bib, links],
 )
 
 
