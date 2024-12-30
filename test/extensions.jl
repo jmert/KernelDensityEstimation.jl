@@ -38,6 +38,7 @@ end
 
 @testset "Makie" begin
     using CairoMakie
+    using Unitful
 
     rv = rand(1000)
     K = kde(rv, lo = 0.0, hi = 1.0, boundary = :closed)
@@ -55,6 +56,11 @@ end
     @test y[1] ≈ [0.0, 0.0] atol=eps()
     @test y[end] ≈ [1.0, 0.0] atol=eps()
     @test y[end][1] == y[end-1][1]
+
+    # check that unitful KDEs plot as well
+    Ku = kde(rv .* 1u"m", lo = 0.0, hi = 1.0, boundary = :closed)
+    @test plot(Ku).plot isa Plot{lines}
+    @test stairs(Ku).plot isa Plot{stairs}
 end
 
 @testset "UnicodePlots" begin

@@ -72,7 +72,7 @@ domain. A finite value corresponds to a closed boundary, whereas an appropriatel
 infinity implies and open boundary. Having either the wrong sign (such as `hi == -Inf`)
 or a NaN value is an error.
 """
-function boundary((lo, hi)::Tuple{<:Real,<:Real})
+function boundary((lo, hi)::Tuple{<:Number,<:Number})
     if isfinite(lo) && isfinite(hi)
         return Closed
     elseif isfinite(lo) && (isinf(hi) && hi > zero(hi))
@@ -183,17 +183,19 @@ necessary.
 function bandwidth end
 
 """
-    UnivariateKDE{T,R<:AbstractRange{T},V<:AbstractVector{T}} <: AbstractKDE{T}
+    UnivariateKDE{T,U,R<:AbstractRange{T},V<:AbstractVector{U}} <: AbstractKDE{T}
 
 ## Fields
 
 - `x::R`: The locations (bin centers) of the corresponding density estimate values.
 - `f::V`: The density estimate values.
 """
-struct UnivariateKDE{T,R<:AbstractRange{T},V<:AbstractVector{T}} <: AbstractKDE{T}
+struct UnivariateKDE{T,U,R<:AbstractRange{T},V<:AbstractVector{U}} <: AbstractKDE{T}
     x::R
     f::V
 end
+UnivariateKDE{T,U}(x, f) where {T,U} = UnivariateKDE{T, U, typeof(x), typeof(f)}(x, f)
+UnivariateKDE{T}(x, f) where {T} = UnivariateKDE{T, typeof(inv(oneunit(T)))}(x, f)
 
 function Base.show(io::IO, K::UnivariateKDE{T}) where {T}
     if get(io, :compact, false)::Bool
@@ -280,7 +282,7 @@ entrypoint parameters and some internal state variables.
   The convolution kernel used to process the density estimate.
   Defaults to `nothing`.
 """
-Base.@kwdef mutable struct UnivariateKDEInfo{T} <: AbstractKDEInfo{T}
+Base.@kwdef mutable struct UnivariateKDEInfo{T,R} <: AbstractKDEInfo{T}
     method::AbstractKDEMethod
     bounds::Any = nothing
     interval::Tuple{T,T} = (zero(T), zero(T))
@@ -288,15 +290,17 @@ Base.@kwdef mutable struct UnivariateKDEInfo{T} <: AbstractKDEInfo{T}
     npoints::Int = -1
     bandwidth_alg::Union{Nothing,AbstractBandwidthEstimator} = nothing
     bandwidth::T = zero(T)
-    bwratio::T = one(T)
+    bwratio::R = one(R)
     lo::T = zero(T)
     hi::T = zero(T)
     nbins::Int = -1
-    kernel::Union{Nothing,UnivariateKDE{T}} = nothing
+    kernel::Union{Nothing,UnivariateKDE{R}} = nothing
 end
 
-function Base.show(io::IO, info::UnivariateKDEInfo)
-    show(io, typeof(info))
+UnivariateKDEInfo{T}(; kwargs...) where {T} = UnivariateKDEInfo{T,typeof(one(T))}(; kwargs...)
+
+function Base.show(io::IO, info::UnivariateKDEInfo{T}) where {T}
+    print(io, UnivariateKDEInfo, '{', T, '}')
     if get(io, :compact, false)::Bool
         print(io, "(…)")
     else
@@ -313,8 +317,8 @@ function Base.show(io::IO, info::UnivariateKDEInfo)
 end
 
 let wd = maximum(map(length ∘ string, fieldnames(UnivariateKDEInfo)))
-    function Base.show(io::IO, ::MIME"text/plain", info::UnivariateKDEInfo)
-        show(io, typeof(info))
+    function Base.show(io::IO, ::MIME"text/plain", info::UnivariateKDEInfo{T}) where {T}
+        print(io, UnivariateKDEInfo, '{', T, '}')
         println(io, ':')
 
         for fld in fieldnames(typeof(info))
@@ -353,16 +357,16 @@ vector `data` and possible explicit known boundaries as arguments. The extrema a
 as necessary to refine a `nothing` input bound.
 """
 function bounds(data::AbstractVector{T},
-                spec::Tuple{Union{<:Real,Nothing},
-                            Union{<:Real,Nothing},
+                spec::Tuple{Union{<:Number,Nothing},
+                            Union{<:Number,Nothing},
                             Union{Boundary.T,Symbol}}
                ) where {T}
     lo, hi, B = spec
     return (_extrema(data, lo, hi)..., boundary(B))
 end
 
-bounds(data, spec::Tuple{Union{<:Real,Nothing},
-                         Union{<:Real,Nothing}}) = bounds(data, (spec..., :open))
+bounds(data, spec::Tuple{Union{<:Number,Nothing},
+                         Union{<:Number,Nothing}}) = bounds(data, (spec..., :open))
 
 
 @noinline _warn_bounds_override(bounds, lo, hi) =
@@ -372,21 +376,21 @@ bounds(data, spec::Tuple{Union{<:Real,Nothing},
 
 """
     data, details = init(method::K, data::AbstractVector{T};
-                         lo::Union{Nothing,<:Real} = nothing,
-                         hi::Union{Nothing,<:Real} = nothing,
+                         lo::Union{Nothing,<:Number} = nothing,
+                         hi::Union{Nothing,<:Number} = nothing,
                          boundary::Union{Symbol,Boundary.T} = :open,
                          bounds = nothing,
-                         bandwidth::Union{<:Real,<:AbstractBandwidthEstimator} = ISJBandwidth(),
+                         bandwidth::Union{<:Number,<:AbstractBandwidthEstimator} = ISJBandwidth(),
                          bwratio::Real = 1,
                          nbins::Union{Nothing,<:Integer} = nothing,
                          kwargs...) where {K<:AbstractKDEMethod, T}
 """
 function init(method::K, data::AbstractVector{T};
-              lo::Union{Nothing,<:Real} = nothing,
-              hi::Union{Nothing,<:Real} = nothing,
+              lo::Union{Nothing,<:Number} = nothing,
+              hi::Union{Nothing,<:Number} = nothing,
               boundary::Union{Symbol,Boundary.T} = :open,
               bounds = nothing,
-              bandwidth::Union{<:Real,<:AbstractBandwidthEstimator} = ISJBandwidth(),
+              bandwidth::Union{<:Number,<:AbstractBandwidthEstimator} = ISJBandwidth(),
               bwratio::Real = 8,
               nbins::Union{Nothing,<:Integer} = nothing,
               kwargs...) where {K<:AbstractKDEMethod, T}
@@ -419,13 +423,13 @@ function init(method::K, data::AbstractVector{T};
         # Use a larger bandwidth for higher-order estimators which achieve lower bias
         # See Lewis (2019) Eqn 35 and Footnote 10.
         if m > 1
-            bandwidth′ *= T(ν) ^ (1 // 5 - 1 // (4m + 1))
+            bandwidth′ *= oftype(one(T), ν) ^ (1 // 5 - 1 // (4m + 1))
         end
     else
         bandwidth′ = convert(T, bandwidth)
     end
     options.bandwidth = bandwidth′
-    options.bwratio = bwratio′ = convert(T, bwratio)::T
+    options.bwratio = bwratio′ = oftype(one(T), bwratio)
 
     # Then expand the bounds if the bound(s) are open
     lo′ -= (boundary′ == Closed || boundary′ == ClosedLeft) ? zero(T) : 8bandwidth′
@@ -473,7 +477,9 @@ See also [`HistogramBinning`](@ref)
 struct LinearBinning <: AbstractBinningKDE end
 
 function _kdebin(::B, data, lo, hi, nbins) where B <: Union{HistogramBinning, LinearBinning}
-    T = eltype(data)
+    T = eltype(data)  # unitful
+    R = typeof(inv(oneunit(T)))  # inverse unitful
+    U = typeof(one(T))  # unitless
     wd = hi - lo
 
     # calculate Δx and Δs = 1/Δx, and use twice-precision-like steps to keep track of the
@@ -481,17 +487,17 @@ function _kdebin(::B, data, lo, hi, nbins) where B <: Union{HistogramBinning, Li
     if lo == hi
         Δx = zero(T)
         δx = zero(T)
-        Δs = one(T)
-        δs = zero(T)
+        Δs = oneunit(R)
+        δs = zero(R)
     else
-        Δx = wd / T(nbins)
-        δx = fma(-Δx, T(nbins), wd) / T(nbins)
-        Δs = T(nbins) / wd
-        δs = fma(-Δs, wd, T(nbins)) / wd
+        Δx = wd / U(nbins)
+        δx = fma(-Δx, U(nbins), wd) / U(nbins)
+        Δs = U(nbins) / wd
+        δs = fma(-Δs, wd, U(nbins)) / wd
     end
 
     ν = 0
-    f = zeros(T, nbins)
+    f = zeros(R, nbins)
     for x in data
         lo ≤ x ≤ hi || continue  # skip out-of-bounds elements
         if x == hi
@@ -514,19 +520,19 @@ function _kdebin(::B, data, lo, hi, nbins) where B <: Union{HistogramBinning, Li
 
         ν += 1
         if B === HistogramBinning
-            f[ii] += one(T)
+            f[ii] += oneunit(R)
         elseif B === LinearBinning
             # calculate weight as relative distance from containing bin center
-            ww = (zz - ii + 1) - one(T) / 2
+            ww = (zz - ii + 1) - one(U) / 2
             off = ifelse(signbit(ww), -1, 1)  # adjascent bin direction
             jj = clamp(ii + off, 1, nbins)  # adj. bin, limited to in-bounds where outer half-bins do not share
 
             ww = abs(ww)  # weights are positive
-            f[ii] += one(T) - ww
-            f[jj] += ww
+            f[ii] += oneunit(R) * (one(U) - ww)
+            f[jj] += oneunit(R) * ww
         end
     end
-    w = Δs / ν
+    w = (oneunit(T) * Δs) / ν
     for ii in eachindex(f)
         f[ii] *= w
     end
@@ -535,7 +541,7 @@ end
 
 estimator_order(::Type{<:AbstractBinningKDE}) = 0
 
-function estimate(method::AbstractBinningKDE, data::AbstractVector, info::UnivariateKDEInfo)
+function estimate(method::AbstractBinningKDE, data::AbstractVector{T}, info::UnivariateKDEInfo) where {T}
     lo, hi, nbins = info.lo, info.hi, info.nbins
     ν, f = _kdebin(method, data, lo, hi, nbins)
 
@@ -545,9 +551,11 @@ function estimate(method::AbstractBinningKDE, data::AbstractVector, info::Univar
         edges = range(lo, hi, length = nbins + 1)
         centers = edges[2:end] .- step(edges) / 2
     end
-    estim = UnivariateKDE(centers, f)
+    estim = UnivariateKDE{T}(centers, f)
 
-    info.kernel = UnivariateKDE(range(zero(lo), zero(lo), length = 1), [one(lo)])
+    info.kernel = let R = typeof(one(T))
+        UnivariateKDE{R}(range(zero(R), zero(R), length = 1), [one(R)])
+    end
     info.npoints = ν
     return estim, info
 end
@@ -575,10 +583,10 @@ function estimate(method::BasicKDE, data::AbstractVector, info::UnivariateKDEInf
     binned, info = estimate(method.binning, data, info)
     return estimate(method, binned, info)
 end
-function estimate(::BasicKDE, binned::UnivariateKDE, info::UnivariateKDEInfo)
+function estimate(::BasicKDE, binned::UnivariateKDE{T}, info::UnivariateKDEInfo) where {T}
     x, f = binned
-    bw = info.bandwidth
-    Δx = step(x)
+    bw = info.bandwidth / oneunit(T)
+    Δx = step(x) / oneunit(T)
 
     # make sure the kernel axis is centered on zero
     nn = ceil(Int, 4bw / Δx)
@@ -591,11 +599,11 @@ function estimate(::BasicKDE, binned::UnivariateKDE, info::UnivariateKDEInfo)
     #      easy route and just post-normalize a simpler calculation.
     kernel = exp.(-(xx ./ bw) .^ 2 ./ 2)
     kernel ./= sum(kernel)
-    info.kernel = UnivariateKDE(xx, kernel)
+    info.kernel = UnivariateKDE{eltype(xx)}(xx, kernel)
 
     # convolve the data with the kernel to construct a density estimate
     f̂ = conv(f, kernel, :same)
-    estim = UnivariateKDE(x, f̂)
+    estim = UnivariateKDE{T}(x, f̂)
     return estim, info
 end
 
@@ -625,7 +633,7 @@ function estimate(method::LinearBoundaryKDE, data::AbstractVector, info::Univari
     binned, info = estimate(method.binning, data, info)
     return estimate(method, binned, info)
 end
-function estimate(method::LinearBoundaryKDE, binned::UnivariateKDE, info::UnivariateKDEInfo)
+function estimate(method::LinearBoundaryKDE, binned::UnivariateKDE{T}, info::UnivariateKDEInfo) where {T}
     h = copy(binned.f)
     (x, f), info = estimate(BasicKDE(method.binning), binned, info)
 
@@ -635,7 +643,7 @@ function estimate(method::LinearBoundaryKDE, binned::UnivariateKDE, info::Univar
     kx, K = info.kernel
     K̂ = plan_conv(f, K)
 
-    Θ = fill!(similar(f), true)
+    Θ = fill!(similar(f, eltype(K)), one(eltype(K)))
     μ₀ = conv(Θ, K̂, :same)
 
     K = K .* kx
@@ -652,7 +660,7 @@ function estimate(method::LinearBoundaryKDE, binned::UnivariateKDE, info::Univar
     pos(f₁, f₂) = iszero(f₁) ? zero(f₁) : f₁ * exp(f₂ / f₁ - one(f₁))
     f .= pos.(f ./ μ₀, (μ₂ .* f .- μ₁ .* f′) ./ (μ₀ .* μ₂ .- μ₁.^2))
 
-    return UnivariateKDE(x, f), info
+    return UnivariateKDE{T}(x, f), info
 end
 
 
@@ -689,20 +697,20 @@ function estimate(method::MultiplicativeBiasKDE, data::AbstractVector, info::Uni
     binned, info = estimate(method.binning, data, info)
     return estimate(method, binned, info)
 end
-function estimate(method::MultiplicativeBiasKDE, binned::UnivariateKDE, info::UnivariateKDEInfo)
+function estimate(method::MultiplicativeBiasKDE, binned::UnivariateKDE{T}, info::UnivariateKDEInfo) where {T}
     # generate pilot KDE
     pilot, info = estimate(method.method, binned, info)
 
     # use the pilot KDE to flatten the unsmoothed histogram
-    nonzero(x) = iszero(x) ? one(x) : x
+    nonzero(x) = iszero(x) ? oneunit(x) : x
     pilot.f .= nonzero.(pilot.f)
-    binned.f ./= pilot.f
+    binned.f ./= pilot.f .* oneunit(T)
 
     # then run KDE again on the flattened distribution
     iter, _ = estimate(method.method, binned, info)
 
     # unflatten and return
-    iter.f .*= pilot.f
+    iter.f .*= pilot.f .* oneunit(T)
     return iter, info
 end
 
@@ -729,7 +737,8 @@ function bandwidth(::SilvermanBandwidth, v::AbstractVector{T},
     # Get the count and variance simultaneously
     #   Calculate variance via Welford's algorithm
     ν = 0
-    μ = μ₋₁ = σ² = zero(T)
+    μ = μ₋₁ = zero(T)
+    σ² = zero(T)^2  # unitful numbers require correct squaring
     for x in v
         lo ≤ x ≤ hi || continue  # skip out-of-bounds elements
         ν += 1
@@ -746,7 +755,7 @@ function bandwidth(::SilvermanBandwidth, v::AbstractVector{T},
     #   - bw = σ̂ n^(-1/5) C₂(k)
     #     C₂(k) = 2 ( 8R(k)√π / 96κ₂² )^(1/5) == (4/3)^(1/5)
     return iszero(σ²) ? eps(one(T)) :
-        sqrt(σ²) * (T(4 // 3) / ν)^(one(T) / 5)
+        sqrt(σ²) * (oftype(one(T), (4 // 3)) / ν)^(one(T) / 5)
 end
 
 module _ISJ
@@ -867,7 +876,9 @@ function bandwidth(isj::ISJBandwidth{<:Any}, v::AbstractVector{T},
     h₀ = info.bandwidth / Δx
     #   2. Via the Fourier scaling theorem, f(x / Δx) ⇔ Δx × f̂(k), we must scale the DCT
     #      by the grid step size.
-    f̂ = FFTW.r2r!(f, FFTW.REDFT10) .* Δx
+    f̂ = one(T) == oneunit(T) ? f : f .* oneunit(T)
+    FFTW.r2r!(f̂, FFTW.REDFT10)
+    f̂ .*= (Δx / oneunit(T))
 
     # Now we simply solve for the fixed-point solution:
     h = Δx * _ISJ.estimate(isj.niter, ν, f̂, h₀)

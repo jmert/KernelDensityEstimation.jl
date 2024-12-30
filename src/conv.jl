@@ -62,8 +62,9 @@ function replan_conv!(plan::ConvPlan{T}, K::AbstractVector) where {T}
     return plan
 end
 
-function plan_conv(f::AbstractVector{U}, K::AbstractVector{V}) where {U<:Real, V<:Real}
-    T = promote_type(float(U), float(V))
+function plan_conv(f::AbstractVector{U}, K::AbstractVector{V}) where {U<:Number, V<:Real}
+    _unitless(S) = typeof(one(float(S)))
+    T = promote_type(_unitless(U), _unitless(V))
     n, m = length(f), length(K)
     plan = ConvPlan{T}(n, m)
     return replan_conv!(plan, K)
@@ -98,7 +99,11 @@ function conv(f::AbstractVector{S}, K::AbstractVector{T}, shape::ConvShape.T) wh
     return conv(f, plan_conv(f, K), shape)
 end
 function conv(f::AbstractVector{S}, plan::ConvPlan{T}, shape::ConvShape.T) where {S, T}
-    return conv(T.(f), plan, shape)
+    if one(S) == oneunit(S)
+        return conv(T.(f), plan, shape)
+    else
+        return (oneunit(S) .* one(T)) .* conv(T.(f ./ oneunit(S)), plan, shape)
+    end
 end
 function conv(f::AbstractVector{T}, plan::ConvPlan{T}, shape::ConvShape.T) where {T}
     n, m, L = plan.dims

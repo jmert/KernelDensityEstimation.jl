@@ -19,6 +19,12 @@ Depth = 2:2
   For the [`HistogramBinning`](@ref) case, it is now possible to precisely bin `range(lo, hi, nbins)` values into their
   corresponding bins (whereas previously values may be counted incorrectly one bin too low due to rounding in the
   floating point calculations).
+- The implementation has been modified to support unitful quantities (without adding a new package dependency) via
+  careful consideration and application of appropriate factors of `one` and/or `oneunit` (and relaxing type constraints
+  or adding new type parameters to structs, where necessary).
+  Given a vector with units `u`, the density object's fields `(K.x, K.f)` have units `(u, u^-1)`, respectively, in
+  correspondence with interpreting any integrated range to be a unitless probability
+  (i.e. `probability = sum(K.f[a .< K.x .< b]) * step(K.x)`).
 - The documentation has generally been improved:
   - A new ["Showcase" section](showcase.md) has been added to showcase examples of density estimation with this package.
   - A [User Guide](userguide.md) has been started to give a brief introduction to installing and using the package.

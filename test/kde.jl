@@ -3,6 +3,7 @@ using .KDE: estimate
 using FFTW
 using Statistics: std, var
 using Random: Random, randn
+using Unitful
 
 edges2centers(r) = r[2:end] .- step(r) / 2
 centers2edges(r) = (Δ = step(r) / 2; range(first(r) - Δ, last(r) + Δ, length = length(r) + 1))
@@ -30,7 +31,7 @@ rv_norm_long = rv_norm_σ .* randn(Random.seed!(Random.default_rng(), 1234), Int
     ]
     method = KDE.LinearBinning()
 
-    RT = Tuple{Vector{Float64}, KDE.UnivariateKDEInfo{Float64}}
+    RT = Tuple{Vector{Float64}, KDE.UnivariateKDEInfo{Float64,Float64}}
     @testset "options = $kws" for kws in variations
         @test @inferred(init(method, [1.0]; kws...)) isa RT
     end
@@ -194,8 +195,8 @@ end
     @test info.bandwidth isa Float32
 
 
-    expT = Tuple{KDE.UnivariateKDE{Float64,<:AbstractRange{Float64},<:AbstractVector{Float64}},
-                 KDE.UnivariateKDEInfo{Float64}}
+    expT = Tuple{KDE.UnivariateKDE{Float64,Float64,<:AbstractRange{Float64},<:AbstractVector{Float64}},
+                 KDE.UnivariateKDEInfo{Float64,Float64}}
     @test @inferred(estimate(KDE.HistogramBinning(), [1.0, 2.0]; nbins = 2, kws...)) isa expT
 end
 
@@ -460,22 +461,38 @@ end
 end  # Bandwidth Estimators
 
 @testset "Type Handling" begin
+    kws = (; method = KDE.MultiplicativeBiasKDE(), bandwidth = KDE.ISJBandwidth())
     rv = view(rv_norm_long, 1:100)
-    K1 = kde(rv)
+    K1 = kde(rv; kws...)
 
     # Equality and hashing
-    K2 = kde(rv)
+    K2 = kde(rv; kws...)
     @test K1 !== K2
     @test K1 == K2
     @test hash(K1) == hash(K2)
-    K3 = kde(rv[1:50])
+    K3 = kde(rv[1:50]; kws...)
     @test K1 !== K3
     @test K1 != K3
     @test hash(K1) != hash(K3)
 
-    K4 = kde(Float32.(rv))
+    K4 = kde(Float32.(rv); kws...)
     @test eltype(K1) == eltype(K1.x) == eltype(K1.f) == Float64
     @test eltype(K4) == eltype(K4.x) == eltype(K4.f) == Float32
+
+    @testset "Unitful numbers" begin
+        urv = Quantity.(rv, u"m")
+        Ku = @inferred kde(urv; kws...)
+
+        # The density is presumably not identical due to differences in how the compiler
+        # was able to optimize the floating point operations, but we still expect pretty
+        # stringent agreement
+        @test K1.x == Ku.x ./ u"m"
+        @test K1.f ≈ Ku.f .* u"m"  rtol=2eps(1.0)
+
+        U = typeof(1.0u"m")
+        R = typeof(1 / 1.0u"m")
+        @test Ku isa KDE.UnivariateKDE{U, R, <:AbstractRange{U}, <:AbstractVector{R}}
+    end
 end
 
 @testset "Show" begin
@@ -500,7 +517,7 @@ end
 
         # Verify the headers appear as expected
         @test occursin("UnivariateKDE{Float64}", shortmsg)
-        @test occursin("UnivariateKDE{Float64,", longmsg)  # full parametric typing
+        @test occursin("UnivariateKDE{Float64, Float64,", longmsg)  # full parametric typing
         @test occursin("UnivariateKDE{Float64}", limitlongmsg)
     end
 
@@ -522,7 +539,7 @@ end
 
         # Verify the headers appear as expected
         @test occursin("UnivariateKDEInfo{Float64}", shortmsg)
-        @test occursin("UnivariateKDEInfo{Float64}", longmsg)  # full parametric typing
+        @test occursin("UnivariateKDEInfo{Float64}", longmsg)
         @test occursin("UnivariateKDEInfo{Float64}", limitlongmsg)
 
 
