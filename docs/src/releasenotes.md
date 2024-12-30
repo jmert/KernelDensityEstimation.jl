@@ -25,6 +25,10 @@ Depth = 2:2
   Given a vector with units `u`, the density object's fields `(K.x, K.f)` have units `(u, u^-1)`, respectively, in
   correspondence with interpreting any integrated range to be a unitless probability
   (i.e. `probability = sum(K.f[a .< K.x .< b]) * step(K.x)`).
+- The package no longer depends on `Roots.jl` (used by the ISJ bandwidth estimator); instead, an implementation of
+  [Brent's Method](https://en.wikipedia.org/wiki/Brent%27s_method) is now included here directly. This not only
+  decreases the dependence on external packages but also reduces both package load time and the precompiled package
+  image size.
 - The documentation has generally been improved:
   - A new ["Showcase" section](showcase.md) has been added to showcase examples of density estimation with this package.
   - A [User Guide](userguide.md) has been started to give a brief introduction to installing and using the package.

@@ -771,7 +771,7 @@ function bandwidth(::SilvermanBandwidth, v::AbstractVector{T},
 end
 
 module _ISJ
-    using Roots: Roots, ZeroProblem, solve
+    include("roots.jl")
 
     # Calculates norm of the the j-th derivative of the convolved density function, e.g.
     #
@@ -816,16 +816,11 @@ module _ISJ
 
     # Express the fixed-point equation (Botev et al Eqn. 30) as an expression where the
     # root is the desired bandwidth.
-    function fixed_point_equation(h::T, (l, ν, f̂)::Tuple{Int, Int, Vector{T}}) where {T<:Real}
-        ξ = ((6sqrt(T(2)) - 3) / 7) ^ (one(T) / 5)
-        t = h - ξ * γˡ(l, ν, f̂, h)
-        return t
-    end
-
     function estimate(l::Int, ν::Int, f̂::Vector{T}, h₀::T) where {T<:Real}
-        problem = ZeroProblem(fixed_point_equation, h₀)
-        t = solve(problem; p = (l, ν, f̂))
-        return t
+        ξ = ((6sqrt(T(2)) - 3) / 7) ^ (one(T) / 5)
+        return brent(eps(h₀), 8h₀) do h
+            return h - ξ * γˡ(l, ν, f̂, h)
+        end
     end
 end
 
