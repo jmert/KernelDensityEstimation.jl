@@ -12,12 +12,12 @@ end
 
 function conv_range(n, m, shape::ConvShape.T)
     n′ = n + m - 1
-    if shape === ConvShape.FULL
-        return 1:n′
-    elseif shape === ConvShape.SAME
+    if shape === ConvShape.SAME
         return cld(m + 1, 2) .+ (0:n-1)
     elseif shape === ConvShape.VALID
         return m:(n′-m+1)
+    else
+        return 1:n′
     end
 end
 
@@ -63,7 +63,6 @@ function replan_conv!(plan::ConvPlan{T}, K::AbstractVector) where {T}
 end
 
 function plan_conv(f::AbstractVector{U}, K::AbstractVector{V}) where {U<:Number, V<:Real}
-    _unitless(S) = typeof(one(float(S)))
     T = promote_type(_unitless(U), _unitless(V))
     n, m = length(f), length(K)
     plan = ConvPlan{T}(n, m)
@@ -99,24 +98,18 @@ function conv(f::AbstractVector{S}, K::AbstractVector{T}, shape::ConvShape.T) wh
     return conv(f, plan_conv(f, K), shape)
 end
 function conv(f::AbstractVector{S}, plan::ConvPlan{T}, shape::ConvShape.T) where {S, T}
-    if one(S) == oneunit(S)
-        return conv(T.(f), plan, shape)
-    else
-        return (oneunit(S) .* one(T)) .* conv(T.(f ./ oneunit(S)), plan, shape)
-    end
-end
-function conv(f::AbstractVector{T}, plan::ConvPlan{T}, shape::ConvShape.T) where {T}
     n, m, L = plan.dims
     length(f) == n || throw(DimensionMismatch())
 
     # f̂ = ℱ[f]
-    @view(plan.f[1:n]) .= f
+    @view(plan.f[1:n]) .= _isunitless(S) ? f : f ./ oneunit(S)
     @view(plan.f[n+1:end]) .= zero(T)
     mul!(plan.f̂, plan.fwd, plan.f)
 
     # g = ℱ¯¹[f̂ ⊙ K̂]
     plan.f̂ .*= plan.K̂
     mul!(plan.f, plan.rev, plan.f̂)
-    return plan.f[conv_range(n, m, shape)]
-end
 
+    I = conv_range(n, m, shape)
+    return _isunitless(S) ? plan.f[I] : plan.f[I] .* oneunit(S)
+end

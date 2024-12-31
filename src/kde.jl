@@ -196,7 +196,7 @@ struct UnivariateKDE{T,U,R<:AbstractRange{T},V<:AbstractVector{U}} <: AbstractKD
 end
 
 function _univariate_type(::Type{T}) where {T}
-    U = typeof(inv(oneunit(T)))
+    U = _invunit(T)
     R = typeof(range(zero(T), zero(T), length = 1))
     V = Vector{U}
     return UnivariateKDE{T, U, R, V}
@@ -305,7 +305,7 @@ Base.@kwdef mutable struct UnivariateKDEInfo{T,R,K<:UnivariateKDE} <: AbstractKD
 end
 
 function UnivariateKDEInfo{T}(; kwargs...) where {T}
-    R = typeof(one(T))
+    R = _unitless(T)
     K = _univariate_type(R)
     UnivariateKDEInfo{T,R,K}(; kwargs...)
 end
@@ -489,8 +489,8 @@ struct LinearBinning <: AbstractBinningKDE end
 
 function _kdebin(::B, data, lo, hi, nbins) where B <: Union{HistogramBinning, LinearBinning}
     T = eltype(data)  # unitful
-    R = typeof(inv(oneunit(T)))  # inverse unitful
-    U = typeof(one(T))  # unitless
+    R = _invunit(T)
+    U = _unitless(T)
     wd = hi - lo
 
     # calculate Δx and Δs = 1/Δx, and use twice-precision-like steps to keep track of the
@@ -564,7 +564,7 @@ function estimate(method::AbstractBinningKDE, data::AbstractVector{T}, info::Uni
     end
     estim = UnivariateKDE{T}(centers, f)
 
-    info.kernel = let R = typeof(one(T))
+    info.kernel = let R = _unitless(T)
         UnivariateKDE{R}(range(zero(R), zero(R), length = 1), [one(R)])
     end
     info.npoints = ν
@@ -645,9 +645,9 @@ function estimate(method::LinearBoundaryKDE, data::AbstractVector, info::Univari
     return estimate(method, binned, info)
 end
 function estimate(method::LinearBoundaryKDE, binned::UnivariateKDE{T}, info::UnivariateKDEInfo) where {T}
+    R = _unitless(T)
     h = copy(binned.f)
     (x, f), info = estimate(BasicKDE(method.binning), binned, info)
-    R = typeof(one(T))
 
     # apply a linear boundary correction
     # see Eqn 12 & 16 of Lewis (2019)
@@ -716,13 +716,13 @@ function estimate(method::MultiplicativeBiasKDE, binned::UnivariateKDE{T}, info:
     # use the pilot KDE to flatten the unsmoothed histogram
     nonzero(x) = iszero(x) ? oneunit(x) : x
     pilot.f .= nonzero.(pilot.f)
-    binned.f ./= pilot.f .* oneunit(T)
+    binned.f ./= _isunitless(T) ? pilot.f : pilot.f .* oneunit(T)
 
     # then run KDE again on the flattened distribution
     iter, _ = estimate(method.method, binned, info)
 
     # unflatten and return
-    iter.f .*= pilot.f .* oneunit(T)
+    iter.f .*= _isunitless(T) ? pilot.f : pilot.f .* oneunit(T)
     return iter, info
 end
 
@@ -883,7 +883,7 @@ function bandwidth(isj::ISJBandwidth{<:Any}, v::AbstractVector{T},
     h₀ = info.bandwidth / Δx
     #   2. Via the Fourier scaling theorem, f(x / Δx) ⇔ Δx × f̂(k), we must scale the DCT
     #      by the grid step size.
-    f̂ = one(T) == oneunit(T) ? f : f .* oneunit(T)
+    f̂ = _isunitless(T) ? f : f .* oneunit(T)
     FFTW.r2r!(f̂, FFTW.REDFT10)
     f̂ .*= (Δx / oneunit(T))
 

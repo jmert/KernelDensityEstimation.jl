@@ -17,6 +17,10 @@ export kde
                 ))
 end
 
+_isunitless(::Type{T}) where {T} = one(T) == oneunit(T)
+_unitless(::Type{T}) where {T} = typeof(one(T))
+_invunit(::Type{T}) where {T} = typeof(inv(oneunit(T)))
+
 include("conv.jl")
 include("kde.jl")
 
