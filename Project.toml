@@ -1,7 +1,7 @@
 name = "KernelDensityEstimation"
 uuid = "e46ec5f4-66dc-4371-a668-81bd92d19d7d"
 authors = ["Justin Willmert <justin@willmert.me>"]
-version = "0.5.0"
+version = "0.6.0"
 
 [deps]
 FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"

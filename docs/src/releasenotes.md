@@ -11,7 +11,7 @@ Depth = 2:2
 
 ---
 
-## Unreleased
+## v0.6.0 — 2024 Dec 31
 
 - Public functions have been declared using Julia v1.11+'s `public` keyword.
 - The value of the bin-center for the zero-width singleton histogram has been fixed.
