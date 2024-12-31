@@ -41,6 +41,12 @@ rv_norm_long = rv_norm_σ .* randn(Random.seed!(Random.default_rng(), 1234), Int
     # Unused options that make it down to the option processing step log a warning message
     @test_logs((:warn, "Unused keyword argument(s)"),
                KDE.init(method, [1.0], bandwidth = 1.0, unusedarg=true))
+
+    # Verify that the kernel's type is fully known and inferrable
+    info = KDE.UnivariateKDEInfo{Float32}(; method)
+    info.kernel = KDE.UnivariateKDE{Float32}(range(0f0, 0f0, length = 1), [1f0])
+    get_kernel(info) = info.kernel
+    @test (@inferred Nothing get_kernel(info)) isa KDE.UnivariateKDE{Float32,Float32}
 end
 
 @testset "Bounds Handling" begin

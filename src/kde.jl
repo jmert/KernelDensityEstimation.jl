@@ -194,8 +194,15 @@ struct UnivariateKDE{T,U,R<:AbstractRange{T},V<:AbstractVector{U}} <: AbstractKD
     x::R
     f::V
 end
-UnivariateKDE{T,U}(x, f) where {T,U} = UnivariateKDE{T, U, typeof(x), typeof(f)}(x, f)
-UnivariateKDE{T}(x, f) where {T} = UnivariateKDE{T, typeof(inv(oneunit(T)))}(x, f)
+
+function _univariate_type(::Type{T}) where {T}
+    U = typeof(inv(oneunit(T)))
+    R = typeof(range(zero(T), zero(T), length = 1))
+    V = Vector{U}
+    return UnivariateKDE{T, U, R, V}
+end
+UnivariateKDE{T}(x, f) where {T} = _univariate_type(T)(x, f)
+
 
 function Base.show(io::IO, K::UnivariateKDE{T}) where {T}
     if get(io, :compact, false)::Bool
@@ -282,7 +289,7 @@ entrypoint parameters and some internal state variables.
   The convolution kernel used to process the density estimate.
   Defaults to `nothing`.
 """
-Base.@kwdef mutable struct UnivariateKDEInfo{T,R} <: AbstractKDEInfo{T}
+Base.@kwdef mutable struct UnivariateKDEInfo{T,R,K<:UnivariateKDE} <: AbstractKDEInfo{T}
     method::AbstractKDEMethod
     bounds::Any = nothing
     interval::Tuple{T,T} = (zero(T), zero(T))
@@ -294,10 +301,14 @@ Base.@kwdef mutable struct UnivariateKDEInfo{T,R} <: AbstractKDEInfo{T}
     lo::T = zero(T)
     hi::T = zero(T)
     nbins::Int = -1
-    kernel::Union{Nothing,UnivariateKDE{R}} = nothing
+    kernel::Union{Nothing,K} = nothing
 end
 
-UnivariateKDEInfo{T}(; kwargs...) where {T} = UnivariateKDEInfo{T,typeof(one(T))}(; kwargs...)
+function UnivariateKDEInfo{T}(; kwargs...) where {T}
+    R = typeof(one(T))
+    K = _univariate_type(R)
+    UnivariateKDEInfo{T,R,K}(; kwargs...)
+end
 
 function Base.show(io::IO, info::UnivariateKDEInfo{T}) where {T}
     print(io, UnivariateKDEInfo, '{', T, '}')
@@ -636,6 +647,7 @@ end
 function estimate(method::LinearBoundaryKDE, binned::UnivariateKDE{T}, info::UnivariateKDEInfo) where {T}
     h = copy(binned.f)
     (x, f), info = estimate(BasicKDE(method.binning), binned, info)
+    R = typeof(one(T))
 
     # apply a linear boundary correction
     # see Eqn 12 & 16 of Lewis (2019)
@@ -643,7 +655,7 @@ function estimate(method::LinearBoundaryKDE, binned::UnivariateKDE{T}, info::Uni
     kx, K = info.kernel
     K̂ = plan_conv(f, K)
 
-    Θ = fill!(similar(f, eltype(K)), one(eltype(K)))
+    Θ = fill!(similar(f, R), one(R))
     μ₀ = conv(Θ, K̂, :same)
 
     K = K .* kx
