@@ -31,7 +31,7 @@ rv_norm_long = rv_norm_σ .* randn(Random.seed!(Random.default_rng(), 1234), Int
     ]
     method = KDE.LinearBinning()
 
-    RT = Tuple{Vector{Float64}, KDE.UnivariateKDEInfo{Float64,Float64}}
+    RT = Tuple{Vector{Float64}, Nothing, KDE.UnivariateKDEInfo{Float64,Float64}}
     @testset "options = $kws" for kws in variations
         @test @inferred(init(method, [1.0]; kws...)) isa RT
     end
@@ -214,7 +214,7 @@ end
 
     # For regular histogram binning, using the bin edges as values must result in a uniform
     # distribution except the last bin which is doubled (due to being closed on the right).
-    ν, H = KDE._kdebin(KDE.HistogramBinning(), v, first(r), last(r), length(r) - 1)
+    ν, H = KDE._kdebin(KDE.HistogramBinning(), v, nothing, first(r), last(r), length(r) - 1)
     @test ν == length(r)
     @test all(@view(H[1:end-1]) .== H[1])
     @test H[end] == 2H[1]
@@ -223,7 +223,7 @@ end
     # weight from the two edges but also gaining half a contribution from their (only)
     # neighbors. (The remaining interior bins give up half of their weight but
     # simultaneously gain from a neighbor, so they are unchanged.)
-    ν, H = KDE._kdebin(KDE.LinearBinning(), v, first(r), last(r), length(r) - 1)
+    ν, H = KDE._kdebin(KDE.LinearBinning(), v, nothing, first(r), last(r), length(r) - 1)
     @test ν == length(r)
     @test all(@view(H[2:end-1]) .≈ H[2])
     @test H[end] ≈ H[1]
@@ -241,9 +241,84 @@ end
     hi = x = 0.006728850177869153
     nbins = 122
 
-    _, H = KDE._kdebin(KDE.LinearBinning(), [x], lo, hi, nbins)
+    _, H = KDE._kdebin(KDE.LinearBinning(), [x], nothing, lo, hi, nbins)
     @test all(iszero, @view H[1:end-1])
     @test H[end] > 0.0
+end
+
+@testset "Weighting" begin
+    N = 100
+    rv = @view rv_norm_long[1:N]
+
+    Nlen = Float64(N)
+    Npos = Float64(count(>=(0), rv))
+    weight1 = ones(length(rv))
+    weight2 = 2 .* weight1
+    wpositive = [1.0 + (x ≥ 0) for x in rv]
+
+    # shortcut to avoid repeating ourselves...
+    _initinfo(args...; kwargs...) = KDE.init(KDE.BasicKDE(), args...; kwargs...)[3]
+
+    # using weight values
+    @test _initinfo(rv).neffective === Nlen
+    @test _initinfo(rv, nothing).neffective === Nlen
+    @test _initinfo(rv, weight1).neffective === Nlen
+    @test _initinfo(rv, weight2).neffective === Nlen
+
+    # weight values with bounds that exclude data
+    @test _initinfo(rv, nothing; lo = 0.0).neffective === Npos
+    @test _initinfo(rv, weight1; lo = 0.0).neffective === Npos
+    @test _initinfo(rv, weight2; lo = 0.0).neffective === Npos
+
+    # weight type differing from data type
+    @test _initinfo(rv, Int.(weight1)).neffective === Nlen
+    @test _initinfo(rv, Float32.(weight1)).neffective === Nlen
+
+    # having non-uniform weights leads to a smaller effective sample size (for the same
+    # number of samples)
+    info1 = _initinfo(rv, weight1)
+    info2 = _initinfo(rv, wpositive)
+    @test info1.neffective > info2.neffective
+
+    # Binning accounts for weights
+    @testset "$(nameof(typeof(binning)))" for binning in (KDE.HistogramBinning(), KDE.LinearBinning())
+        args = (-5rv_norm_σ, 5rv_norm_σ, 51)
+
+        # binning uses the sum of weights, not effective sample size
+        wsum0, H0 = KDE._kdebin(binning, rv, nothing, args...)
+        wsum1, H1 = KDE._kdebin(binning, rv, weight1, args...)
+        wsum2, H2 = KDE._kdebin(binning, rv, weight2, args...)
+        @test wsum0 == N
+        @test wsum1 == N
+        @test wsum2 == 2N
+
+        # because the above are all uniform weights, the histograms themselves should be
+        # equal (up to floating point rounding differences)
+        @test H0 ≈ H1 atol=eps(1.0)
+        @test H0 ≈ H2 atol=eps(1.0)
+    end
+
+    # Bandwidth estimation accounts for weights
+    @testset "$(nameof(typeof(bandwidth)))" for bandwidth in (KDE.SilvermanBandwidth(), KDE.ISJBandwidth())
+        bounds = (-5rv_norm_σ, 5rv_norm_σ, KDE.Open)
+
+        # uniform weights reduce to the same effective sample size
+        bw0 = KDE.bandwidth(bandwidth, rv, bounds...)
+        bw1 = KDE.bandwidth(bandwidth, rv, bounds...; weights = weight1)
+        bw2 = KDE.bandwidth(bandwidth, rv, bounds...; weights = weight2)
+        @test bw0 == bw1
+        @test bw0 == bw2
+    end
+
+    # send weights through the high-level interface
+    K0 = kde(rv)
+    K1 = kde(rv, weights = weight1)
+    @test K1 == K0
+
+    # the mean of distribution should shift to the right when positive values are
+    # weighted twice as much
+    Kp = kde(rv, weights = wpositive)
+    @test sum(K1.x .* K1.f) < sum(Kp.x .* Kp.f)
 end
 
 @testset "Basic Kernel Density Estimate" begin
@@ -461,7 +536,7 @@ end
     let N = 1_000, σ = rv_norm_σ, v = view(rv_norm_long, 1:N),
         bandwidth = KDE.SilvermanBandwidth(), bounds = (-6σ, 6σ, KDE.Open)
         h₀ = KDE.bandwidth(bandwidth, v, bounds...)
-        h₁ = KDE.init(KDE.MultiplicativeBiasKDE(), v; bandwidth, bounds)[2].bandwidth
+        h₁ = KDE.init(KDE.MultiplicativeBiasKDE(), v; bandwidth, bounds)[3].bandwidth
         @test h₁ / h₀ ≈ N ^ (1//5 - 1//9)
     end
 end  # Bandwidth Estimators

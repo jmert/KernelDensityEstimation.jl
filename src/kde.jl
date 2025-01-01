@@ -135,12 +135,13 @@ Abstract supertype of kernel bandwidth estimation techniques.
 abstract type AbstractBandwidthEstimator end
 
 """
-    estim, info = estimate(method::AbstractKDEMethod, data::AbstractVector; kwargs...)
+    estim, info = estimate(method::AbstractKDEMethod, data::AbstractVector, weights::Union{Nothing, AbstractVector}; kwargs...)
     estim, info = estimate(method::AbstractKDEMethod, data::AbstractKDE, info::AbstractKDEInfo; kwargs...)
 
 Apply the kernel density estimation algorithm `method` to the given data, either in the
-form of a vector of `data` or a prior density estimate and its corresponding pipeline
-`info` (to support being part of a processing pipeline).
+form of a vector of `data` (and optionally with corresponding vector of `weights`) or a
+prior density estimate and its corresponding pipeline `info` (to support being part of a
+processing pipeline).
 
 ## Returns
 
@@ -171,11 +172,13 @@ the interval and boundary refinement for new argument types.
 function bounds end
 
 """
-    h = bandwidth(estimator::AbstractBandwidthEstimator, data::AbstractVector{T},
-                  lo::T, hi::T, boundary::Boundary.T) where {T}
+    h = bandwidth(estimator::AbstractBandwidthEstimator, data::AbstractVector{T}
+                  lo::T, hi::T, boundary::Boundary.T;
+                  weights::Union{Nothing, <:AbstractVector} = nothing
+                  ) where {T}
 
-Determine the appropriate bandwidth `h` of the data set `data` using chosen `estimator`
-algorithm.
+Determine the appropriate bandwidth `h` of the data set `data` (optionally with
+corresponding `weights`) using chosen `estimator` algorithm.
 The bandwidth is provided the range (`lo` through `hi`) and boundary style (`boundary`) of
 the request KDE method for use in filtering and/or correctly interpreting the data, if
 necessary.
@@ -253,9 +256,10 @@ entrypoint parameters and some internal state variables.
   [`boundary()`](@ref) with the value of the `.bounds` field.
   Defaults to [`Open`](@ref Boundary).
 
-- `npoints::Int`:
-  The number of values in the original data vector.
-  Defaults to `-1`.
+- `neffective::T`:
+  Kish's effective sample size of the data, which equals the length of the original data
+  vector for uniformly weighted samples.
+  Defaults to `NaN`.
 
 - `bandwidth_alg::Union{Nothing,`[`AbstractBandwidthEstimator`](@ref)`}`:
   Algorithm used to estimate an appropriate bandwidth, if a concrete value was not
@@ -294,7 +298,7 @@ Base.@kwdef mutable struct UnivariateKDEInfo{T,R,K<:UnivariateKDE} <: AbstractKD
     bounds::Any = nothing
     interval::Tuple{T,T} = (zero(T), zero(T))
     boundary::Boundary.T = Open
-    npoints::Int = -1
+    neffective::R = R(NaN)
     bandwidth_alg::Union{Nothing,AbstractBandwidthEstimator} = nothing
     bandwidth::T = zero(T)
     bwratio::R = one(R)
@@ -386,17 +390,22 @@ bounds(data, spec::Tuple{Union{<:Number,Nothing},
 @noinline _warn_unused(kwargs) = @warn "Unused keyword argument(s)" kwargs=kwargs
 
 """
-    data, details = init(method::K, data::AbstractVector{T};
-                         lo::Union{Nothing,<:Number} = nothing,
-                         hi::Union{Nothing,<:Number} = nothing,
-                         boundary::Union{Symbol,Boundary.T} = :open,
-                         bounds = nothing,
-                         bandwidth::Union{<:Number,<:AbstractBandwidthEstimator} = ISJBandwidth(),
-                         bwratio::Real = 1,
-                         nbins::Union{Nothing,<:Integer} = nothing,
-                         kwargs...) where {K<:AbstractKDEMethod, T}
+    data, weights, details = init(
+            method::K, data::AbstractVector{T},
+            weights::Union{Nothing,<:AbstractVector} = nothing;
+            lo::Union{Nothing,<:Number} = nothing,
+            hi::Union{Nothing,<:Number} = nothing,
+            boundary::Union{Symbol,Boundary.T} = :open,
+            bounds = nothing,
+            bandwidth::Union{<:Number,<:AbstractBandwidthEstimator} = ISJBandwidth(),
+            bwratio::Real = 1,
+            nbins::Union{Nothing,<:Integer} = nothing,
+            kwargs...
+        ) where {K<:AbstractKDEMethod, T}
 """
-function init(method::K, data::AbstractVector{T};
+function init(method::K,
+              data::AbstractVector{T},
+              weights::Union{Nothing,<:AbstractVector} = nothing;
               lo::Union{Nothing,<:Number} = nothing,
               hi::Union{Nothing,<:Number} = nothing,
               boundary::Union{Symbol,Boundary.T} = :open,
@@ -420,21 +429,35 @@ function init(method::K, data::AbstractVector{T};
     options.boundary = boundary′
     options.interval = (lo′, hi′)
 
-    # Calculate (or count) the number of data points in the interval
-    ν = let l = lo′, h = hi′
-        count(x -> l ≤ x ≤ h, data)
+    # Calculate the effective sample size, based on weights and the bounds, using the
+    # Kish effective sample size definition:
+    #
+    #   n_eff = sum(weights)^2 / sum(weights .^ 2)
+    #
+    # https://search.r-project.org/CRAN/refmans/svyweight/html/eff_n.html
+    # https://en.wikipedia.org/wiki/Weighted_arithmetic_mean#Reliability_weights
+    wsum = zero(_unitless(T))
+    wsqr = zero(wsum)
+    I = isnothing(weights) ? eachindex(data) : eachindex(data, weights)
+    @simd for ii in I
+        x = @inbounds data[ii]
+        w = isnothing(weights) ? one(wsum) : oftype(wsum, @inbounds weights[ii])
+        keep = lo′ ≤ x ≤ hi′
+        wsum += ifelse(keep, w, zero(wsum))
+        wsqr += ifelse(keep, w^2, zero(wsqr))
     end
-    options.npoints = ν
+    options.neffective = neff = wsum^2 / wsqr
 
     # Estimate bandwidth from data, as necessary
     if bandwidth isa AbstractBandwidthEstimator
         options.bandwidth_alg = bandwidth
-        bandwidth′ = KernelDensityEstimation.bandwidth(bandwidth, data, lo′, hi′, boundary′)::T
+        bandwidth′ = KernelDensityEstimation.bandwidth(
+                bandwidth, data, lo′, hi′, boundary′; weights)::T
         m = estimator_order(typeof(method))
         # Use a larger bandwidth for higher-order estimators which achieve lower bias
         # See Lewis (2019) Eqn 35 and Footnote 10.
         if m > 1
-            bandwidth′ *= oftype(one(T), ν) ^ (1 // 5 - 1 // (4m + 1))
+            bandwidth′ *= neff ^ (1 // 5 - 1 // (4m + 1))
         end
     else
         bandwidth′ = convert(T, bandwidth)
@@ -462,11 +485,13 @@ function init(method::K, data::AbstractVector{T};
     if length(kwargs) > 0
         _warn_unused(kwargs)
     end
-    return data, options
+    return data, weights, options
 end
 
 
-estimate(M::AbstractKDEMethod, v; kwargs...) = estimate(M, init(M, v; kwargs...)...)
+function estimate(M::AbstractKDEMethod, data, weights = nothing; kwargs...)
+    return estimate(M, init(M, data, weights; kwargs...)...)
+end
 
 
 """
@@ -487,7 +512,7 @@ See also [`HistogramBinning`](@ref)
 """
 struct LinearBinning <: AbstractBinningKDE end
 
-function _kdebin(::B, data, lo, hi, nbins) where B <: Union{HistogramBinning, LinearBinning}
+function _kdebin(::B, data, weights, lo, hi, nbins) where B <: Union{HistogramBinning, LinearBinning}
     T = eltype(data)  # unitful
     R = _invunit(T)
     U = _unitless(T)
@@ -507,9 +532,13 @@ function _kdebin(::B, data, lo, hi, nbins) where B <: Union{HistogramBinning, Li
         δs = fma(-Δs, wd, U(nbins)) / wd
     end
 
-    ν = 0
+    I = isnothing(weights) ? eachindex(data) : eachindex(data, weights)
+    wsum = zero(U)
     f = zeros(R, nbins)
-    for x in data
+    for ii in I
+        x = @inbounds data[ii]
+        w = isnothing(weights) ? one(U) : @inbounds weights[ii]
+
         lo ≤ x ≤ hi || continue  # skip out-of-bounds elements
         if x == hi
             # handle the closed-right bound of the last bin specially
@@ -529,32 +558,35 @@ function _kdebin(::B, data, lo, hi, nbins) where B <: Union{HistogramBinning, Li
             ii += x >= ee
         end
 
-        ν += 1
+        wsum += w
         if B === HistogramBinning
-            f[ii] += oneunit(R)
+            f[ii] += w * oneunit(R)
         elseif B === LinearBinning
-            # calculate weight as relative distance from containing bin center
-            ww = (zz - ii + 1) - one(U) / 2
-            off = ifelse(signbit(ww), -1, 1)  # adjascent bin direction
+            # calculate fraction as relative distance from containing bin center
+            ff = (zz - ii + 1) - one(U) / 2
+            off = ifelse(signbit(ff), -1, 1)  # adjascent bin direction
             jj = clamp(ii + off, 1, nbins)  # adj. bin, limited to in-bounds where outer half-bins do not share
 
-            ww = abs(ww)  # weights are positive
-            f[ii] += oneunit(R) * (one(U) - ww)
-            f[jj] += oneunit(R) * ww
+            ff = abs(ff)  # weights are positive
+            f[ii] += w * oneunit(R) * (one(U) - ff)
+            f[jj] += w * oneunit(R) * ff
         end
     end
-    w = (oneunit(T) * Δs) / ν
+    norm = (oneunit(T) * Δs) / wsum
     for ii in eachindex(f)
-        f[ii] *= w
+        f[ii] *= norm
     end
-    return ν, f
+    return wsum, f
 end
 
 estimator_order(::Type{<:AbstractBinningKDE}) = 0
 
-function estimate(method::AbstractBinningKDE, data::AbstractVector{T}, info::UnivariateKDEInfo) where {T}
+function estimate(method::AbstractBinningKDE,
+                  data::AbstractVector{T},
+                  weights::Union{Nothing, <:AbstractVector},
+                  info::UnivariateKDEInfo) where {T}
     lo, hi, nbins = info.lo, info.hi, info.nbins
-    ν, f = _kdebin(method, data, lo, hi, nbins)
+    _, f = _kdebin(method, data, weights, lo, hi, nbins)
 
     if lo == hi
         centers = range(lo, hi, length = 1)
@@ -567,7 +599,6 @@ function estimate(method::AbstractBinningKDE, data::AbstractVector{T}, info::Uni
     info.kernel = let R = _unitless(T)
         UnivariateKDE{R}(range(zero(R), zero(R), length = 1), [one(R)])
     end
-    info.npoints = ν
     return estim, info
 end
 
@@ -590,8 +621,11 @@ end
 
 estimator_order(::Type{<:BasicKDE}) = 1
 
-function estimate(method::BasicKDE, data::AbstractVector, info::UnivariateKDEInfo)
-    binned, info = estimate(method.binning, data, info)
+function estimate(method::BasicKDE,
+                  data::AbstractVector,
+                  weights::Union{Nothing, <:AbstractVector},
+                  info::UnivariateKDEInfo)
+    binned, info = estimate(method.binning, data, weights, info)
     return estimate(method, binned, info)
 end
 function estimate(::BasicKDE, binned::UnivariateKDE{T}, info::UnivariateKDEInfo) where {T}
@@ -640,8 +674,11 @@ end
 
 estimator_order(::Type{<:LinearBoundaryKDE}) = 1
 
-function estimate(method::LinearBoundaryKDE, data::AbstractVector, info::UnivariateKDEInfo)
-    binned, info = estimate(method.binning, data, info)
+function estimate(method::LinearBoundaryKDE,
+                  data::AbstractVector,
+                  weights::Union{Nothing, <:AbstractVector},
+                  info::UnivariateKDEInfo)
+    binned, info = estimate(method.binning, data, weights, info)
     return estimate(method, binned, info)
 end
 function estimate(method::LinearBoundaryKDE, binned::UnivariateKDE{T}, info::UnivariateKDEInfo) where {T}
@@ -709,8 +746,11 @@ end
 
 estimator_order(::Type{<:MultiplicativeBiasKDE}) = 2
 
-function estimate(method::MultiplicativeBiasKDE, data::AbstractVector, info::UnivariateKDEInfo)
-    binned, info = estimate(method.binning, data, info)
+function estimate(method::MultiplicativeBiasKDE,
+                  data::AbstractVector,
+                  weights::Union{Nothing, <:AbstractVector},
+                  info::UnivariateKDEInfo)
+    binned, info = estimate(method.binning, data, weights, info)
     return estimate(method, binned, info)
 end
 function estimate(method::MultiplicativeBiasKDE, binned::UnivariateKDE{T}, info::UnivariateKDEInfo) where {T}
@@ -737,11 +777,19 @@ end
 Estimates the necessary bandwidth of a vector of data ``v`` using Silverman's Rule for
 a Gaussian smoothing kernel:
 ```math
-    h = \\left(\\frac{4}{3n}\\right)^{1/5} σ̂
+    h = \\left(\\frac{4}{3n_\\mathrm{eff}}\\right)^{1/5} σ̂
 ```
-where ``n`` is the length of ``v`` and ``σ̂`` is its sample variance.
+where ``n_\\mathrm{eff}`` is the effective number of degrees of freedom of ``v``, and
+``σ̂^2`` is its sample variance.
 
 See also [`ISJBandwidth`](@ref)
+
+# Extended help
+
+The sample variance and effective number of degrees of freedom are calculated using
+weighted statistics, where the latter is defined to be Kish's effective sample size
+``n_\\mathrm{eff} = (\\sum_i w_i)^2 / \\sum_i w_i^2`` for weights ``w_i``.
+For uniform weights, this reduces to the length of the vector ``v``.
 
 ## References
 - [Hansen2009](@citet)
@@ -749,19 +797,30 @@ See also [`ISJBandwidth`](@ref)
 struct SilvermanBandwidth <: AbstractBandwidthEstimator end
 
 function bandwidth(::SilvermanBandwidth, v::AbstractVector{T},
-                   lo::T, hi::T, ::Boundary.T) where {T}
-    # Get the count and variance simultaneously
-    #   Calculate variance via Welford's algorithm
-    ν = 0
+                   lo::T, hi::T, ::Boundary.T;
+                   weights::Union{Nothing, <:AbstractVector} = nothing
+                   ) where {T}
+    # Get the effective sample size and variance simultaneously
+    #   - See note in init() about neffective calculation
+    #   - Calculate variance via Welford's algorithm:
+    #     https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
+    wsum = zero(_unitless(T))
+    wsqr = zero(wsum)
     μ = μ₋₁ = zero(T)
     σ² = zero(T)^2  # unitful numbers require correct squaring
-    for x in v
+    I = isnothing(weights) ? eachindex(v) : eachindex(v, weights)
+    for ii in I
+        x = @inbounds v[ii]
+        w = isnothing(weights) ? one(wsum) : @inbounds weights[ii]
         lo ≤ x ≤ hi || continue  # skip out-of-bounds elements
-        ν += 1
-        w = one(T) / ν
-        μ₋₁, μ = μ, (one(T) - w) * μ + w * x
-        σ² = (one(T) - w) * σ² + w * (x - μ) * (x - μ₋₁)
+        wsum += w
+        wsqr += w^2
+        ω = w / wsum
+        μ₋₁, μ = μ, (one(T) - ω) * μ + ω * x
+        σ² = (one(T) - ω) * σ² + ω * (x - μ) * (x - μ₋₁)
     end
+    neff = wsum^2 / wsqr
+
     # From Hansen (2009) — https://users.ssc.wisc.edu/~bhansen/718/NonParametrics1.pdf
     # for a Gaussian kernel:
     # - Table 1:
@@ -771,7 +830,7 @@ function bandwidth(::SilvermanBandwidth, v::AbstractVector{T},
     #   - bw = σ̂ n^(-1/5) C₂(k)
     #     C₂(k) = 2 ( 8R(k)√π / 96κ₂² )^(1/5) == (4/3)^(1/5)
     return iszero(σ²) ? eps(one(T)) :
-        sqrt(σ²) * (oftype(one(T), (4 // 3)) / ν)^(one(T) / 5)
+        sqrt(σ²) * (oftype(one(T), (4 // 3)) / neff)^(one(T) / 5)
 end
 
 module _ISJ
@@ -802,28 +861,28 @@ module _ISJ
     end
 
     # Calculates the γ function, defined in Botev et al as the right-hand side of Eqn. 29
-    function γ(ν::Int, f̂::Vector{T}, j::Int, h::T) where {T<:Real}
+    function γ(neff::T, f̂::Vector{T}, j::Int, h::T) where {T<:Real}
         N² = ∂ʲ(f̂, h, j + 1)
         fac1 = (T(1) + T(2) ^ -T(j + 0.5)) / 3
-        fac2 = prod(T(1):2:T(2j-1)) / (sqrt(T(π) / 2) * ν * N²)
+        fac2 = prod(T(1):2:T(2j-1)) / (sqrt(T(π) / 2) * neff * N²)
         return (fac1 * fac2) ^ (T(1) / (2j + 3))
     end
 
     # Calculates the iteratively-defined γˡ function, defined in Botev et al, between
     # Eqns. 29 and 30.
-    function γˡ(l::Int, ν::Integer, f̂::Vector{T}, h::T) where {T<:Real}
+    function γˡ(l::Int, neff::T, f̂::Vector{T}, h::T) where {T<:Real}
         for j in l:-1:1
-            h = γ(ν, f̂, j, h)
+            h = γ(neff, f̂, j, h)
         end
         return h
     end
 
     # Express the fixed-point equation (Botev et al Eqn. 30) as an expression where the
     # root is the desired bandwidth.
-    function estimate(l::Int, ν::Int, f̂::Vector{T}, h₀::T) where {T<:Real}
+    function estimate(l::Int, neff::T, f̂::Vector{T}, h₀::T) where {T<:Real}
         ξ = ((6sqrt(T(2)) - 3) / 7) ^ (one(T) / 5)
         return brent(eps(h₀), 8h₀) do h
-            return h - ξ * γˡ(l, ν, f̂, h)
+            return h - ξ * γˡ(l, neff, f̂, h)
         end
     end
 end
@@ -868,15 +927,17 @@ Base.@kwdef struct ISJBandwidth{B<:AbstractBinningKDE,R<:Real} <: AbstractBandwi
 end
 
 function bandwidth(isj::ISJBandwidth{<:Any}, v::AbstractVector{T},
-                   lo::T, hi::T, boundary::Boundary.T) where {T}
+                   lo::T, hi::T, boundary::Boundary.T;
+                   weights::Union{Nothing, <:AbstractVector} = nothing
+                   ) where {T}
     # The Silverman bandwidth estimator should be sufficient to obtain a fine-enough
     # binning that the ISJ algorithm can iterate.
     # We need a histogram, so just reuse the binning base case of the estimator pipeline
     # to provide what we need.
-    (x, f), info = estimate(isj.binning, v; lo, hi, boundary, isj.bwratio,
+    (x, f), info = estimate(isj.binning, v, weights; lo, hi, boundary, isj.bwratio,
                             bandwidth = SilvermanBandwidth())
 
-    ν = info.npoints
+    neff = info.neffective
     Δx = step(x)
     # The core of the ISJ algorithm works in a normalized unit system where Δx = 1.
     # Two things of note:
@@ -892,7 +953,7 @@ function bandwidth(isj::ISJBandwidth{<:Any}, v::AbstractVector{T},
     f̂ .*= (Δx / oneunit(T))
 
     # Now we simply solve for the fixed-point solution:
-    h = Δx * _ISJ.estimate(isj.niter, ν, f̂, h₀)
+    h = Δx * _ISJ.estimate(isj.niter, neff, f̂, h₀)
 
     # Check that the fixed-point solver converged to a positive value
     if isnan(h) || h < zero(T)
@@ -907,12 +968,13 @@ end
 
 
 """
-    estim = kde(v;
-                method = MultiplicativeBiasKDE(),
+    estim = kde(data;
+                weights = nothing, method = MultiplicativeBiasKDE(),
                 lo = nothing, hi = nothing, boundary = :open, bounds = nothing,
                 bandwidth = ISJBandwidth(), bwratio = 8 nbins = nothing)
 
-Calculate a discrete kernel density estimate (KDE) `f(x)` from samples `v`.
+Calculate a discrete kernel density estimate (KDE) `estim` from samples `data`, optionally
+weighted by a corresponding vector of `weights`.
 
 The default `method` of density estimation uses the [`MultiplicativeBiasKDE`](@ref)
 pipeline, which includes corrections for boundary effects and peak broadening which should
@@ -943,13 +1005,12 @@ The default bandwidth estimator is the Improved Sheather-Jones ([`ISJBandwidth`]
 no explicit bandwidth is given.
 """
 function kde(data;
-             method::AbstractKDEMethod = MultiplicativeBiasKDE(),
+             weights = nothing, method::AbstractKDEMethod = MultiplicativeBiasKDE(),
              lo = nothing, hi = nothing, boundary = :open, bounds = nothing,
              bandwidth = ISJBandwidth(), bwratio = 8, nbins = nothing,
             )
-    data′, info = init(method, data;
-                       lo, hi, boundary, bounds, nbins, bandwidth, bwratio)
-    estim, _ = estimate(method, data′, info)
+    estim, _ = estimate(method, data, weights;
+                        lo, hi, boundary, bounds, nbins, bandwidth, bwratio)
     # The pipeline is not perfectly norm-preserving, so renormalize before returning to
     # the user.
     estim.f ./= sum(estim.f) * step(estim.x)

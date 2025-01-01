@@ -153,5 +153,85 @@ density estimate with correct boundaries is also smoother than the unbounded est
 This is because the sharp drops at ``x = \{0, 1\}`` no longer need to be represented, so the algorithm is no longer
 compromising on smoothing the interior of the distribution with retaining the cut-offs.
 
-See the docstring for [`kde`](@ref) (and references therein) for more information on the behavior of the `lo`, `hi`,
-and `boundary` keyword arguments.
+!!! hint
+    In addition to the aforementioned triple of `lo`, `hi`, and `boundary` keywords, there is a single `bounds`
+    keyword which can replace all three.
+    The built-in mechanism only accepts a tuple where `bounds = (lo, hi, boundary)`, but the additional keyword
+    makes it possible to customize behavior for new types of arguments.
+    For example, there is a [package extension for `Distributions.jl`](@ref ext-distributions) which allows using
+    the support of a distribution to automatically infer appropriate boundary conditions and limits.
+
+    See the docstring for [`kde`](@ref) (and references therein) for more information.
+
+
+## Densities of weighted samples
+
+In some cases, the data to be analyzed is a _weighted_ vector of data (represented as a vector of data and a
+corresponding vector of weight factors).
+For instance, [importance sampling](https://en.wikipedia.org/wiki/Importance_sampling) of an
+[MCMC](https://en.wikipedia.org/wiki/Markov_chain_Monte_Carlo) chain results in non-uniform weights that then must
+be considered when deriving a density estimate.
+
+Take the following toy example where we have a target parameter ``v`` and nuisance parameter ``p`` that are correlated,
+where a uniform prior was assumed for ``p``:
+
+```@example get_started
+Random.seed!(200)  # hide
+# correlation coefficient and nuisance parameter
+ρ, p = 0.85, randn(500)
+# correlated target parameter
+v = ρ .* p .+ sqrt(1 - ρ^2) .* randn.()
+nothing  # hide
+```
+
+Now suppose that you have reason to update your prior on ``p``, believing now that positive values are twice as likely
+as negative ones.
+If the method of generating ``v`` is expensive, and because the change in prior is not extreme, it may be efficient
+and acceptable to instead importance sample the existing values by reweighting the samples by the ratio of the
+priors:
+
+```math
+\begin{align*}
+P_1(p) &\propto 1
+&
+P_2(p) &\propto \begin{cases}
+    1 & p < 0 \\
+    2 & p \ge 0 \\
+    \end{cases}
+\end{align*}
+```
+
+```@example get_started
+P1(z) = 1.0
+P2(z) = z ≥ 0 ? 2.0 : 1.0
+weights = P2.(p) ./ P1.(p)
+nothing  # hide
+```
+
+We then simply provide these weights as a keyword argument in the call to `kde`:
+```@example get_started
+K1 = kde(v)
+K2 = kde(v; weights)
+nothing  # hide
+```
+
+```@setup get_started
+fig = Figure(size = (400, 400))
+ax = Axis(fig[1, 1])
+
+lines!(ax, K1, color = :blue3, label = "uniform prior")
+lines!(ax, K2, color = :firebrick3, label = "reweight (positive more likely)")
+Legend(fig[2, 1], ax, orientation = :horizontal)
+
+save("getting_started_weighting.svg", fig)
+```
+![](getting_started_weighting.svg)
+
+As expected, this shifts the resultant density estimate to the right, toward more positive values.
+
+!!! note
+
+    The effective sample size ([`UnivariateKDEInfo.neffective`](@ref UnivariateKDEInfo)) is calculated from the weights
+    using [Kish's definition](https://search.r-project.org/CRAN/refmans/svyweight/html/eff_n.html).
+    Both of the bandwidth estimators ([`SilvermanBandwidth`](@ref) and [`ISJBandwidth`](@ref)) use this definition
+    in scaling the bandwidth with the (effective) sample size.

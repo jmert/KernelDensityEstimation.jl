@@ -11,6 +11,14 @@ Depth = 2:2
 
 ---
 
+## Unreleased
+
+- A new `weights` keyword argument has been added to the [`kde`](@ref) function to support weighted data sets.
+  As a consequence, the API of multiple interfaces have been changed:
+  - [`bandwidth`](@ref) has gained a `weights` keyword.
+  - The [`init`](@ref) method returns three values (`data`, `weights`, and `info`) instead of just two.
+  - The [`estimate`](@ref) function takes a mandatory `weights` positional argument.
+
 ## v0.6.0 — 2024 Dec 31
 
 - Public functions have been declared using Julia v1.11+'s `public` keyword.
