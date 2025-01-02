@@ -1,5 +1,9 @@
 # Showcase
 
-## [Simple Distributions](showcase/distributions.md)
+## [Simple Distributions](showcase/simple_distributions/index.md)
 
-![](showcase/distributions.svg)
+![](showcase/simple_distributions/index.svg)
+
+## [CosmoMC Weighted Chains (BK18 baseline likelihood analysis)](showcase/bk18_likelihood/index.md)
+
+![](showcase/bk18_likelihood/index.svg)

@@ -10,6 +10,7 @@ Its main features (and limitations) are:
 
 - Uses a Gaussian kernel for smoothing (truncated at ``4σ``).
 - Supports closed boundaries.
+- Supports processing weighted samples.
 - Provides higher-order estimators to better capture variation in width and slope of distributions.
 - A more sophisticated bandwidth estimator than the typical Silverman rule.
 - Limited to 1D curves — does **not** support 2D densities.
@@ -22,7 +23,7 @@ This package largely implements the algorithms described by Lewis (2019)[^1]
 
 ---
 
-![Four-panel plot showing KDEs of simple normal, exponential, beta, and gaussian mixture-model samples](docs/src/showcase/distributions.svg)
+![Four-panel plot showing KDEs of simple normal, exponential, beta, and gaussian mixture-model samples](docs/src/showcase/simple_distributions/index.svg)
 
 [docs-stable-img]: https://img.shields.io/badge/docs-stable-blue.svg
 [docs-stable-url]: https://jmert.github.io/KernelDensityEstimation.jl/stable

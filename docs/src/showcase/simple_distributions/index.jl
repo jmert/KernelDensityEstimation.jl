@@ -65,4 +65,4 @@ rowgap!.(Ref(fig.layout), 1:2:2size(dists, 1), Ref(Fixed(8)))
 
 Legend(fig[end+1, :], content(fig[2, 1]), tellheight = true, orientation = :horizontal)
 
-save("distributions.svg", fig, backend = CairoMakie)
+save("index.svg", fig, backend = CairoMakie)
