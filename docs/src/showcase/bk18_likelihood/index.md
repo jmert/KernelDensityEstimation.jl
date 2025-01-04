@@ -22,13 +22,6 @@ Note that because this package does not support constructing 2D density estimate
 "ellipses" in the lower-left triangle of the plot has been replaced with simple 2D histograms.
 The hex bin sizes have been chosen using 2× the automatically-determined bandwidths of the corresponding 1D curves.
 
-!!! details "Source Code"
-    ````@eval
-    import Markdown
-    sourcecode = read(joinpath(dirname(@__FILE__), "index.jl"), String)
-    Markdown.parse("""
-    ```julia
-    $sourcecode
-    ```
-    """)
-    ````
+```@eval
+Main.@showcase_source
+```
