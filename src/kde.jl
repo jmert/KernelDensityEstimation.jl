@@ -646,7 +646,7 @@ function estimate(method::LinearBoundaryKDE, data::AbstractVector, info::Univari
 end
 function estimate(method::LinearBoundaryKDE, binned::UnivariateKDE{T}, info::UnivariateKDEInfo) where {T}
     R = _unitless(T)
-    h = copy(binned.f)
+    h = binned.f
     (x, f), info = estimate(BasicKDE(method.binning), binned, info)
 
     # apply a linear boundary correction
@@ -667,6 +667,10 @@ function estimate(method::LinearBoundaryKDE, binned::UnivariateKDE{T}, info::Uni
     replan_conv!(K̂, K)
     μ₂ = conv(Θ, K̂, :same)
 
+    # Mathematically f from basic KDE is strictly non-negative, but numerically we
+    # frequently find small negative values. The following only works when it is truly
+    # non-negative.
+    f .= max.(zero(_invunit(T)), f)
     # function to force f̂ to be positive
     # see Eqn. 17 of Lewis (2019)
     pos(f₁, f₂) = iszero(f₁) ? zero(f₁) : f₁ * exp(f₂ / f₁ - one(f₁))
