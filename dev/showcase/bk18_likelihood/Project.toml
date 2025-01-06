@@ -1,0 +1,15 @@
+[deps]
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+KernelDensityEstimation = "e46ec5f4-66dc-4371-a668-81bd92d19d7d"
+
+[sources]
+KernelDensityEstimation = {path = "../../../.."}
+
+[compat]
+KernelDensityEstimation = "0.6"
+Makie = "0.20,0.21"
+julia = "1.9"
+
+[extras]
+Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
