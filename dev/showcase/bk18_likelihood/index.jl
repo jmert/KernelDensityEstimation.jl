@@ -146,7 +146,7 @@ end
 ax_r_Ad = let ax = Axis(large_grid[2, 1])
     # KDE defaults to bwratio = 8, so factor of 16 × Δx is just 2 × bandwidth
     cellsize = 16 .* (step(K_r.x), step(K_Ad.x))
-    hexbin!(ax, param_r, param_Ad; weights, cellsize, colormap = Reverse(:greys))
+    hexbin!(ax, chain_r, chain_Ad; weights, cellsize, colormap = Reverse(:greys))
     hidexdecorations!(ax, ticks = false)
     ax.ylabel = dust_label
     xlims!(ax, 0, 0.18)
@@ -158,7 +158,7 @@ end
 ax_r_As = let ax = Axis(large_grid[3, 1])
     # KDE defaults to bwratio = 8, so factor of 16 × Δx is just 2 × bandwidth
     cellsize = 16 .* (step(K_r.x), step(K_As.x))
-    hexbin!(ax, param_r, param_As; weights, cellsize, colormap = Reverse(:greys))
+    hexbin!(ax, chain_r, chain_As; weights, cellsize, colormap = Reverse(:greys))
     ax.xlabel = L"r"
     ax.ylabel = sync_label
     xlims!(ax, 0, 0.18)
@@ -170,7 +170,7 @@ end
 ax_Ad_As = let ax = Axis(large_grid[3, 2])
     # KDE defaults to bwratio = 8, so factor of 16 × Δx is just 2 × bandwidth
     cellsize = 16 .* (step(K_Ad.x), step(K_As.x))
-    hexbin!(ax, param_Ad, param_As; weights, cellsize, colormap = Reverse(:greys))
+    hexbin!(ax, chain_Ad, chain_As; weights, cellsize, colormap = Reverse(:greys))
     hideydecorations!(ax, ticks = false)
     ax.xlabel = dust_label
     xlims!(ax, 0, 11)

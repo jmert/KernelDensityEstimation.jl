@@ -154,7 +154,7 @@ end
 ax_r_Ad = let ax = Axis(large_grid[2, 1])
     # KDE defaults to bwratio = 8, so factor of 16 × Δx is just 2 × bandwidth
     cellsize = 16 .* (step(K_r.x), step(K_Ad.x))
-    hexbin!(ax, param_r, param_Ad; weights, cellsize, colormap = Reverse(:greys))
+    hexbin!(ax, chain_r, chain_Ad; weights, cellsize, colormap = Reverse(:greys))
     hidexdecorations!(ax, ticks = false)
     ax.ylabel = dust_label
     xlims!(ax, 0, 0.18)
@@ -166,7 +166,7 @@ end
 ax_r_As = let ax = Axis(large_grid[3, 1])
     # KDE defaults to bwratio = 8, so factor of 16 × Δx is just 2 × bandwidth
     cellsize = 16 .* (step(K_r.x), step(K_As.x))
-    hexbin!(ax, param_r, param_As; weights, cellsize, colormap = Reverse(:greys))
+    hexbin!(ax, chain_r, chain_As; weights, cellsize, colormap = Reverse(:greys))
     ax.xlabel = L&quot;r&quot;
     ax.ylabel = sync_label
     xlims!(ax, 0, 0.18)
@@ -178,7 +178,7 @@ end
 ax_Ad_As = let ax = Axis(large_grid[3, 2])
     # KDE defaults to bwratio = 8, so factor of 16 × Δx is just 2 × bandwidth
     cellsize = 16 .* (step(K_Ad.x), step(K_As.x))
-    hexbin!(ax, param_Ad, param_As; weights, cellsize, colormap = Reverse(:greys))
+    hexbin!(ax, chain_Ad, chain_As; weights, cellsize, colormap = Reverse(:greys))
     hideydecorations!(ax, ticks = false)
     ax.xlabel = dust_label
     xlims!(ax, 0, 11)
@@ -268,4 +268,4 @@ small_grid.valign = :top
 small_grid.halign = :right
 
 save(&quot;index.svg&quot;, fig, backend = CairoMakie)
-</code></pre></div></details></article><nav class="docs-footer"><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.0 on <span class="colophon-date" title="Monday 6 January 2025 00:10">Monday 6 January 2025</span>. Using Julia version 1.11.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+</code></pre></div></details></article><nav class="docs-footer"><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.8.0 on <span class="colophon-date" title="Tuesday 7 January 2025 23:52">Tuesday 7 January 2025</span>. Using Julia version 1.11.2.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
