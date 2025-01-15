@@ -22,7 +22,7 @@ KDEUnicodePlotsExt = ["UnicodePlots"]
 
 [compat]
 Roots = "2.1.7"
-Makie = "0.15, 0.16, 0.17, 0.18, 0.19, 0.20, 0.21"
+Makie = "0.15, 0.16, 0.17, 0.18, 0.19, 0.20, 0.21, 0.22"
 UnicodePlots = "3"
 julia = "1.6"
 
