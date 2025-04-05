@@ -35,16 +35,6 @@ baremodule Boundary
 end
 using .Boundary
 
-"""
-    B = boundary(spec)
-
-Convert the specification `spec` to a boundary style `B`.
-
-Packages may specialize this method on the `spec` argument to modify the behavior of
-the boundary inference for new argument types.
-"""
-function boundary end
-
 boundary(spec::Boundary.T) = spec
 
 """
@@ -86,104 +76,6 @@ function boundary((lo, hi)::Tuple{<:Number,<:Number})
     end
 end
 
-
-"""
-    AbstractKDE{T}
-
-Abstract supertype of kernel density estimates.
-
-See also [`UnivariateKDE`](@ref)
-"""
-abstract type AbstractKDE{T} end
-
-Base.eltype(::AbstractKDE{T}) where {T} = T
-
-
-"""
-    AbstractKDEInfo{T}
-
-Abstract supertype of auxiliary information used during kernel density estimation.
-
-See also [`UnivariateKDEInfo`](@ref)
-"""
-abstract type AbstractKDEInfo{T} end
-
-"""
-    AbstractKDEMethod
-
-The abstract supertype of all kernel density estimation methods, including the data
-binning process (see [`AbstractBinningKDE`](@ref)) and subsequent density estimation
-techniques (such as [`BasicKDE`](@ref)).
-"""
-abstract type AbstractKDEMethod end
-
-"""
-    AbstractBinningKDE <: AbstractKDEMethod
-
-The abstract supertype of data binning methods which are the first step in the density
-estimation process.
-The two supported binning methods are [`HistogramBinning`](@ref) and
-[`LinearBinning`](@ref).
-"""
-abstract type AbstractBinningKDE <: AbstractKDEMethod end
-
-"""
-    AbstractBandwidthEstimator
-
-Abstract supertype of kernel bandwidth estimation techniques.
-"""
-abstract type AbstractBandwidthEstimator end
-
-"""
-    estim, info = estimate(method::AbstractKDEMethod, data::AbstractVector, weights::Union{Nothing, AbstractVector}; kwargs...)
-    estim, info = estimate(method::AbstractKDEMethod, data::AbstractKDE, info::AbstractKDEInfo; kwargs...)
-
-Apply the kernel density estimation algorithm `method` to the given data, either in the
-form of a vector of `data` (and optionally with corresponding vector of `weights`) or a
-prior density estimate and its corresponding pipeline `info` (to support being part of a
-processing pipeline).
-
-## Returns
-
-- `estim::`[`AbstractKDE`](@ref): The resultant kernel density estimate.
-- `info::`[`AbstractKDEInfo`](@ref): Auxiliary information describing details of the
-  density estimation either useful or necessary for constructing a pipeline of processing
-  steps.
-"""
-function estimate end
-
-"""
-    p = estimator_order(::Type{<:AbstractKDEMethod})
-
-The bias scaning of the density estimator method, where a return value of `p` corresponds to
-bandwidth-dependent biases of the order ``\\mathcal{O}(h^{2p})``.
-"""
-function estimator_order end
-
-"""
-    lo, hi, boundary = bounds(data::AbstractVector{T}, spec) where {T}
-
-Determine the appropriate interval, from `lo` to `hi` with boundary style `boundary`, for
-the density estimate, given the data vector `data` and KDE argument `bounds`.
-
-Packages may specialize this method on the `spec` argument to modify the behavior of
-the interval and boundary refinement for new argument types.
-"""
-function bounds end
-
-"""
-    h = bandwidth(estimator::AbstractBandwidthEstimator, data::AbstractVector{T}
-                  lo::T, hi::T, boundary::Boundary.T;
-                  weights::Union{Nothing, <:AbstractVector} = nothing
-                  ) where {T}
-
-Determine the appropriate bandwidth `h` of the data set `data` (optionally with
-corresponding `weights`) using chosen `estimator` algorithm.
-The bandwidth is provided the range (`lo` through `hi`) and boundary style (`boundary`) of
-the request KDE method for use in filtering and/or correctly interpreting the data, if
-necessary.
-"""
-function bandwidth end
 
 """
     UnivariateKDE{T,U,R<:AbstractRange{T},V<:AbstractVector{U}} <: AbstractKDE{T}
@@ -493,79 +385,6 @@ function estimate(M::AbstractKDEMethod, data, weights = nothing; kwargs...)
     return estimate(M, init(M, data, weights; kwargs...)...)
 end
 
-
-"""
-    struct HistogramBinning <: AbstractBinningKDE end
-
-Base case which generates a density estimate by histogramming the data.
-
-See also [`LinearBinning`](@ref)
-"""
-struct HistogramBinning <: AbstractBinningKDE end
-
-"""
-    struct LinearBinning <: AbstractBinningKDE end
-
-Base case which generates a density estimate by linear binning of the data.
-
-See also [`HistogramBinning`](@ref)
-"""
-struct LinearBinning <: AbstractBinningKDE end
-
-function _kdebin(::B, data, weights, lo, hi, nbins) where B <: Union{HistogramBinning, LinearBinning}
-    T = eltype(data)  # unitful
-    R = _invunit(T)
-    U = _unitless(T)
-
-    wd = hi - lo
-    Δx = lo == hi ? zero(T) : wd / U(nbins)
-    Δs = lo == hi ? oneunit(R) : U(nbins) / wd
-
-    I = isnothing(weights) ? eachindex(data) : eachindex(data, weights)
-    wsum = zero(U)
-    f = zeros(R, nbins)
-    for ii in I
-        x = @inbounds data[ii]
-        w = isnothing(weights) ? one(U) : @inbounds weights[ii]
-
-        lo ≤ x ≤ hi || continue  # skip out-of-bounds elements
-        if x == hi
-            # handle the closed-right bound of the last bin specially
-            zz = T(nbins)
-            ii = nbins
-        else
-            # calculate fractional (0-indexed) bin position
-            zz = Δs * (x - lo)
-            # truncate to integer (1-indexed) bin index
-            ii = unsafe_trunc(Int, zz) + 1
-
-            # values exactly equal to the ideal bin edges can still cause problems;
-            # compare the value against the next bin's edge value, and if x is not less than
-            # the edge, adjust the index up by one more.
-            right = lo + Δx * ii
-            ii += x >= right
-        end
-
-        wsum += w
-        if B === HistogramBinning
-            f[ii] += w * oneunit(R)
-        elseif B === LinearBinning
-            # calculate fraction as relative distance from containing bin center
-            ff = (zz - ii + 1) - one(U) / 2
-            off = ifelse(signbit(ff), -1, 1)  # adjascent bin direction
-            jj = clamp(ii + off, 1, nbins)  # adj. bin, limited to in-bounds where outer half-bins do not share
-
-            ff = abs(ff)  # weights are positive
-            f[ii] += w * oneunit(R) * (one(U) - ff)
-            f[jj] += w * oneunit(R) * ff
-        end
-    end
-    norm = (oneunit(T) * Δs) / wsum
-    for ii in eachindex(f)
-        f[ii] *= norm
-    end
-    return wsum, f
-end
 
 estimator_order(::Type{<:AbstractBinningKDE}) = 0
 

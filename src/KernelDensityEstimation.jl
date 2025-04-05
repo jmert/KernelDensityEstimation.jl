@@ -22,6 +22,8 @@ _unitless(::Type{T}) where {T} = typeof(one(T))
 _invunit(::Type{T}) where {T} = typeof(inv(oneunit(T)))
 
 include("conv.jl")
+include("interface.jl")
+include("histogram.jl")
 include("kde.jl")
 
 
