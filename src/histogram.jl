@@ -168,4 +168,38 @@ function _hist_inner!(::LinearBinning,
     return nothing
 end
 
+function _histogram!(binning::B,
+                     dest::AbstractArray{R,N},
+                     edges::NTuple{N,HistEdge{T,I}},
+                     data::AbstractVector{<:NTuple{N,T}},
+                     weights::Union{Nothing,<:AbstractVector},
+                    ) where {B<:AbstractBinning, R, N, T, I}
+    Z = ntuple(identity, Val(N))
+
+    # run through data vector and bin entries if they are within bounds
+    wsum = isnothing(weights) ? zero(_unitless(T)) : zero(eltype(weights))
+    for ii in eachindex(data)
+        coord = @inbounds data[ii]
+        if !mapreduce(i -> edges[i].lo ≤ coord[i] ≤ edges[i].hi, &, Z)
+            continue
+        end
+        w = isnothing(weights) ? one(_unitless(T)) : weights[ii]
+        _hist_inner!(binning, dest, edges, coord, w)
+        wsum += w
+    end
+
+    # no need to renormalize if everything was out-of-bounds
+    iszero(wsum) && return wsum
+
+    # apply renormalization
+    #   N.B. treat zero-width bins as having unity scale factor to avoid dividing by zero
+    invvol = mapreduce(i -> (s = edges[i].invstep; s / oneunit(s)), *, Z)
+    norm = invvol / wsum
+    for ii in eachindex(dest)
+        @inbounds dest[ii] *= norm
+    end
+
+    return wsum
+end
+
 end  # module Histogramming

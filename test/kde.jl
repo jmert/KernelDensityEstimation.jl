@@ -206,50 +206,6 @@ end
     @test @inferred(estimate(KDE.HistogramBinning(), [1.0, 2.0]; nbins = 2, kws...)) isa expT
 end
 
-@testset "Histogramming Accuracy" begin
-    r64 = 2e0:1e0/49:28e0
-    r32 = 2f0:1f0/49:28f0
-    l64 = LinRange(r64[1], r64[end], length(r64))
-    l32 = LinRange(r32[1], r32[end], length(r32))
-
-    @testset "$r" for r in (r64, l64, r32, l32)
-        v = Vector(r)
-
-        # For regular histogram binning, using the bin edges as values must result in a uniform
-        # distribution except the last bin which is doubled (due to being closed on the right).
-        ν, H = KDE._kdebin(KDE.HistogramBinning(), v, nothing, r[1], r[end], length(r) - 1)
-        @test ν == length(r)
-        @test_broken all(@view(H[1:end-1]) .== H[1])
-        @test H[end] == 2H[1]
-
-        # For linear binning, the first and last bins differ from the rest, getting all of the
-        # weight from the two edges but also gaining half a contribution from their (only)
-        # neighbors. (The remaining interior bins give up half of their weight but
-        # simultaneously gain from a neighbor, so they are unchanged.)
-        ν, H = KDE._kdebin(KDE.LinearBinning(), v, nothing, r[1], r[end], length(r) - 1)
-        @test ν == length(r)
-        @test all(@view(H[2:end-1]) .≈ H[2])
-        @test H[end] ≈ H[1]
-        @test H[1] ≈ 1.5H[2]
-    end
-
-    # A case where naively calculating the cell index and weight factors suffers from the
-    # limits of finite floating point calculations, e.g.
-    #
-    #     zz = (x - lo) / Δx  # fractional index
-    #     ii = trunc(Int, zz) - (x == hi)  # bin index, including right-closed last bin
-    #     ww = (zz - ii) - 0.5
-    #
-    # results in ww ≈ 1.5 due to the value of zz not being an integer despite x == hi
-    lo = 0.005653766369679568
-    hi = x = 0.006728850177869153
-    nbins = 122
-
-    _, H = KDE._kdebin(KDE.LinearBinning(), [x], nothing, lo, hi, nbins)
-    @test all(iszero, @view H[1:end-1])
-    @test H[end] > 0.0
-end
-
 @testset "Weighting" begin
     N = 100
     rv = @view rv_norm_long[1:N]

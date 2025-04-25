@@ -8,7 +8,7 @@ const LB = Histogramming.LinearBinning()
 
 
 @testset "Inner Binning ($(N)D, $style)" for N in 1:3, style in (HB, LB)
-    using .KDE.Histogramming: HistEdge, _hist_inner!
+    using .Histogramming: HistEdge, _hist_inner!
 
     edges = ((0.0:0.25:1.0 for _ in 1:N)...,)
     edges′ = HistEdge.(edges)
@@ -85,4 +85,97 @@ const LB = Histogramming.LinearBinning()
         @test _hist_inner!(style, uhist, HistEdge.(uedges), val, 1.0) === nothing
         @test sum(uhist) ≈ 1.0u"m^-1" rtol=2eps(1.0)
     end
+end
+
+@testset "Low Level ($(N)D, $style)" for N in 1:3, style in (HB, LB)
+    using .Histogramming: HistEdge, _histogram!
+
+    edges = ((0.0:0.25:1.0 for _ in 1:N)...,)
+    edges′ = HistEdge.(edges)
+    centers = ((r[2:end] .- 0.5step(r) for r in edges)...,)
+    hist = similar(first(centers), (axes(c, 1) for c in centers)...)
+
+    # values for dims 2 and up
+    coord_rest = ((0.0 for _ in 2:N)...,)
+    index_rest = ((1 for _ in 2:N)...,)
+
+    # nothing weights are interpreted as unity weight
+    x1 = [(0.33, coord_rest...)]
+    fill!(hist, 0)
+    _histogram!(style, hist, edges′, x1, nothing)
+    @test sum(hist) * step(edges[1])^N == 1.0
+
+    # out-of-bounds elements are not binned
+    x0 = [(-1.0, (0.0 for _ in 1:N-1)...,)]
+    fill!(hist, 0)
+    _histogram!(style, hist, edges′, x0, nothing)
+    @test sum(hist) == 0.0
+
+    @testset "Code Generation" begin
+        fill!(hist, 0)
+        @test (@inferred _histogram!(style, hist, edges′, x1, nothing)) === 1.0
+        @test_broken (@allocated _histogram!(style, hist, edges′, x1, nothing)) == 0
+    end
+
+    @testset "Unitful numbers" begin
+        # given an n-tuple value with units,
+        vals = [x .* u"m" for x in x1]
+        # the histogram axes have the same units, and the density has inverse units
+        uedges = map(c -> c .* u"m", edges)
+        uhist = zeros(typeof(1.0u"m^-1"^N), axes(hist)...)
+        # verify that the function accepts unitful quantities
+        @test _histogram!(style, uhist, HistEdge.(uedges), vals, nothing) === 1.0
+        @test sum(uhist) * step(uedges[1])^N ≈ 1.0 rtol=2eps(1.0)
+    end
+end
+
+@testset "Histogramming Accuracy" begin
+    using .Histogramming: HistEdge, _histogram!
+
+    r64 = 2e0:1e0/49:28e0
+    r32 = 2f0:1f0/49:28f0
+    l64 = LinRange(r64[1], r64[end], length(r64))
+    l32 = LinRange(r32[1], r32[end], length(r32))
+
+    @testset "$r" for r in (r64, l64, r32, l32)
+        v = reinterpret(reshape, Tuple{eltype(r)}, Vector(r))
+
+        edges = (HistEdge(r),)
+        # For regular histogram binning, using the bin edges as values must result in a uniform
+        # distribution except the last bin which is doubled (due to being closed on the right).
+        H = zeros(eltype(r), length(r) - 1)
+        ν = _histogram!(HB, H, edges, v, nothing)
+        @test ν == length(r)
+        @test_broken all(@view(H[1:end-1]) .== H[1])
+        @test H[end] == 2H[1]
+
+        # For linear binning, the first and last bins differ from the rest, getting all of the
+        # weight from the two edges but also gaining half a contribution from their (only)
+        # neighbors. (The remaining interior bins give up half of their weight but
+        # simultaneously gain from a neighbor, so they are unchanged.)
+        fill!(H, 0.0)
+        ν = _histogram!(LB, H, edges, v, nothing)
+        @test ν == length(r)
+        @test all(@view(H[2:end-1]) .≈ H[2])
+        @test H[end] ≈ H[1]
+        @test H[1] ≈ 1.5H[2]
+    end
+
+    # A case where naively calculating the cell index and weight factors suffers from the
+    # limits of finite floating point calculations, e.g.
+    #
+    #     zz = (x - lo) / Δx  # fractional index
+    #     ii = trunc(Int, zz) - (x == hi)  # bin index, including right-closed last bin
+    #     ww = (zz - ii) - 0.5
+    #
+    # results in ww ≈ 1.5 due to the value of zz not being an integer despite x == hi
+    lo = 0.005653766369679568
+    hi = x = 0.006728850177869153
+    nbins = 122
+
+    H = zeros(nbins)
+    edges = (HistEdge(lo, hi, nbins),)
+    _histogram!(LB, H, edges, [(x,)], nothing)
+    @test all(iszero, @view H[1:end-1])
+    @test H[end] > 0.0
 end
