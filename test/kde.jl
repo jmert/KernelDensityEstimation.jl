@@ -240,24 +240,6 @@ end
     info2 = _initinfo(rv, wpositive)
     @test info1.neffective > info2.neffective
 
-    # Binning accounts for weights
-    @testset "$(nameof(typeof(binning)))" for binning in (KDE.HistogramBinning(), KDE.LinearBinning())
-        args = (-5rv_norm_σ, 5rv_norm_σ, 51)
-
-        # binning uses the sum of weights, not effective sample size
-        wsum0, H0 = KDE._kdebin(binning, rv, nothing, args...)
-        wsum1, H1 = KDE._kdebin(binning, rv, weight1, args...)
-        wsum2, H2 = KDE._kdebin(binning, rv, weight2, args...)
-        @test wsum0 == N
-        @test wsum1 == N
-        @test wsum2 == 2N
-
-        # because the above are all uniform weights, the histograms themselves should be
-        # equal (up to floating point rounding differences)
-        @test H0 ≈ H1 atol=eps(1.0)
-        @test H0 ≈ H2 atol=eps(1.0)
-    end
-
     # Bandwidth estimation accounts for weights
     @testset "$(nameof(typeof(bandwidth)))" for bandwidth in (KDE.SilvermanBandwidth(), KDE.ISJBandwidth())
         bounds = (-5rv_norm_σ, 5rv_norm_σ, KDE.Open)

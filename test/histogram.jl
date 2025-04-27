@@ -129,6 +129,54 @@ end
     end
 end
 
+@testset "Weighting" begin
+    using .Histogramming: HistEdge, _histogram!
+
+    N = 100
+    rv = randn(N)
+    data = reinterpret(reshape, Tuple{Float64}, rv)
+
+    Nlen = Float64(N)
+    Npos = Float64(count(>=(0), rv))
+
+    weight1 = ones(length(rv))
+    weight2 = 2 .* weight1
+
+    Nbin = 24
+    edges = (HistEdge(-5.0, 5.0, Nbin),)
+    edges_pos = (HistEdge(0.0, 5.0, Nbin ÷ 2),)
+
+    H0 = zeros(Nbin)
+    H1 = zeros(Nbin)
+    H2 = zeros(Nbin)
+    @testset "$style" for style in (HB, LB)
+        fill!(H0, 0); fill!(H1, 0); fill!(H2, 0)
+
+        # binning uses the sum of weights (not effective sample size as KDE does)
+        wsum0 = _histogram!(style, H0, edges, data, nothing)
+        wsum1 = _histogram!(style, H1, edges, data, weight1)
+        wsum2 = _histogram!(style, H2, edges, data, weight2)
+        @test wsum0 == N
+        @test wsum1 == N
+        @test wsum2 == 2N
+
+        # because the above are all uniform weights, the histograms themselves should be
+        # equal (up to floating point rounding differences)
+        @test H0 ≈ H1 atol=eps(1.0)
+        @test H0 ≈ H2 atol=eps(1.0)
+
+        # binning weights respect limits and ignore out-of-bounds entries
+        fill!(H0, 0); fill!(H1, 0); fill!(H2, 0)
+
+        wsum0 = _histogram!(style, @view(H1[1:end÷2]), edges_pos, data, weight1)
+        wsum1 = _histogram!(style, @view(H1[1:end÷2]), edges_pos, data, weight1)
+        wsum2 = _histogram!(style, @view(H2[1:end÷2]), edges_pos, data, weight2)
+        @test wsum0 == Npos
+        @test wsum1 == Npos
+        @test wsum2 == 2Npos
+    end
+end
+
 @testset "Histogramming Accuracy" begin
     using .Histogramming: HistEdge, _histogram!
 

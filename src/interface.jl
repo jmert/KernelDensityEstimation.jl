@@ -39,6 +39,24 @@ The two supported binning methods are [`HistogramBinning`](@ref) and
 abstract type AbstractBinningKDE <: AbstractKDEMethod end
 
 """
+    struct HistogramBinning <: AbstractBinningKDE end
+
+Base case which generates a density estimate by histogramming the data.
+
+See also [`LinearBinning`](@ref)
+"""
+struct HistogramBinning <: AbstractBinningKDE end
+
+"""
+    struct LinearBinning <: AbstractBinningKDE end
+
+Base case which generates a density estimate by linear binning of the data.
+
+See also [`HistogramBinning`](@ref)
+"""
+struct LinearBinning <: AbstractBinningKDE end
+
+"""
     AbstractBandwidthEstimator
 
 Abstract supertype of kernel bandwidth estimation techniques.
