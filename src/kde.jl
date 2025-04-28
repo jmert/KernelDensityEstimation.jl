@@ -516,21 +516,10 @@ function _kdebin(::B, data, weights, lo, hi, nbins) where B <: Union{HistogramBi
     T = eltype(data)  # unitful
     R = _invunit(T)
     U = _unitless(T)
-    wd = hi - lo
 
-    # calculate Δx and Δs = 1/Δx, and use twice-precision-like steps to keep track of the
-    # residuals which were rounded away
-    if lo == hi
-        Δx = zero(T)
-        δx = zero(T)
-        Δs = oneunit(R)
-        δs = zero(R)
-    else
-        Δx = wd / U(nbins)
-        δx = fma(-Δx, U(nbins), wd) / U(nbins)
-        Δs = U(nbins) / wd
-        δs = fma(-Δs, wd, U(nbins)) / wd
-    end
+    wd = hi - lo
+    Δx = lo == hi ? zero(T) : wd / U(nbins)
+    Δs = lo == hi ? oneunit(R) : U(nbins) / wd
 
     I = isnothing(weights) ? eachindex(data) : eachindex(data, weights)
     wsum = zero(U)
@@ -545,17 +534,16 @@ function _kdebin(::B, data, weights, lo, hi, nbins) where B <: Union{HistogramBi
             zz = T(nbins)
             ii = nbins
         else
-            # calculate fractional (0-indexed) bin position, using semi-extended precision
-            zz = Δs * (x - lo) + δs * (x - lo)
+            # calculate fractional (0-indexed) bin position
+            zz = Δs * (x - lo)
             # truncate to integer (1-indexed) bin index
             ii = unsafe_trunc(Int, zz) + 1
 
-            # despite the attempt to extend precision, values exactly equal to the ideal
-            # bin edges can still cause problems; compare the value against the
-            # next bin's edge value, and if x is not less than the edge, adjust the index
-            # up by one more.
-            ee = lo + Δx * ii + δx * ii
-            ii += x >= ee
+            # values exactly equal to the ideal bin edges can still cause problems;
+            # compare the value against the next bin's edge value, and if x is not less than
+            # the edge, adjust the index up by one more.
+            right = lo + Δx * ii
+            ii += x >= right
         end
 
         wsum += w

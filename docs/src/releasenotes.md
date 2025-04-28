@@ -11,13 +11,16 @@ Depth = 2:2
 
 ---
 
-## Unreleased
+## v0.7.0 — Unreleased
 
 - A new `weights` keyword argument has been added to the [`kde`](@ref) function to support weighted data sets.
   As a consequence, the API of multiple interfaces have been changed:
   - [`bandwidth`](@ref) has gained a `weights` keyword.
   - The [`init`](@ref) method returns three values (`data`, `weights`, and `info`) instead of just two.
   - The [`estimate`](@ref) function takes a mandatory `weights` positional argument.
+- Revert the "accurate histogram" binning calculation made in the previous release.
+  Further testing has shown that much of the extra work being done was ineffective, so no promise is currently
+  made about being able to precisely bin `range(lo, hi, nbins)` (nor `LinRange(lo, hi, len)`).
 
 ## v0.6.0 — 2024 Dec 31
 
@@ -26,7 +29,7 @@ Depth = 2:2
 - Implement more accurate histogram (and linear) binning calculations.
   For the [`HistogramBinning`](@ref) case, it is now possible to precisely bin `range(lo, hi, nbins)` values into their
   corresponding bins (whereas previously values may be counted incorrectly one bin too low due to rounding in the
-  floating point calculations).
+  floating point calculations). **(Reverted in v0.7.0)**
 - The implementation has been modified to support unitful quantities (without adding a new package dependency) via
   careful consideration and application of appropriate factors of `one` and/or `oneunit` (and relaxing type constraints
   or adding new type parameters to structs, where necessary).
