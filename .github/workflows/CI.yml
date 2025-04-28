@@ -1,16 +1,13 @@
 name: CI
 on:
   push:
-    branches:
-      - 'master'
-    tags: '*'
+    branches: ['master']
+    tags: ['*']
     paths-ignore:
       - 'README.md'
-      - '.github/workflows/**'
   pull_request:
     paths-ignore:
       - 'README.md'
-      - '.github/workflows/**'
   workflow_dispatch:
 
 concurrency:
