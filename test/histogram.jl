@@ -118,14 +118,16 @@ end
     end
 
     @testset "Unitful numbers" begin
-        # given an n-tuple value with units,
-        vals = [x .* u"m" for x in x1]
-        # the histogram axes have the same units, and the density has inverse units
-        uedges = map(c -> c .* u"m", edges)
-        uhist = zeros(typeof(1.0u"m^-1"^N), axes(hist)...)
+        using .Histogramming: _hist_eltype
+
+        # make data unitful, with mixed unit axes
+        units = (u"m", u"s^-2", u"kg")[1:N]
+        vals = [x .* units for x in x1]
+        uedges = map((e, u) -> e .* u, edges, units)
+        uhist = zeros(_hist_eltype(uedges), axes(hist)...)
         # verify that the function accepts unitful quantities
         @test _histogram!(style, uhist, HistEdge.(uedges), vals, nothing) === 1.0
-        @test sum(uhist) * step(uedges[1])^N ≈ 1.0 rtol=2eps(1.0)
+        @test sum(uhist) * mapreduce(step, *, uedges) ≈ 1.0 rtol=2eps(1.0)
     end
 end
 

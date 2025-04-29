@@ -26,6 +26,8 @@ struct HistEdge{T,I}
 end
 HistEdge(edge::AbstractRange) = HistEdge(first(edge), last(edge), length(edge) - 1)
 
+Base.eltype(::HistEdge{T}) where {T} = T
+
 
 function lookup(edge::HistEdge{T,I}, x::T) where {T,I}
     U = _unitless(T)
@@ -51,10 +53,10 @@ end
 
 function _hist_inner!(::HistogramBinning,
                       dest::AbstractArray{R,N},
-                      edges::NTuple{N,HistEdge{T,I}},
-                      coord::NTuple{N,T},
-                      weight::U
-                     ) where {R, N, T, I, U}
+                      edges::Tuple{Vararg{HistEdge,N}},
+                      coord::Tuple{Vararg{Any,N}},
+                      weight::W
+                     ) where {R, N, W}
     idx = map(ii -> lookup(edges[ii], coord[ii])[1], ntuple(identity, Val(N)))
     dest[idx...] += oneunit(R) * weight
     return nothing
@@ -64,16 +66,16 @@ end
 
 function _hist_inner!(::LinearBinning,
                       dest::AbstractArray{R,N},
-                      edges::NTuple{N,HistEdge{T,I}},
-                      coord::NTuple{N,T},
-                      weight::U
-                     ) where {R, N, T, I, U}
+                      edges::Tuple{Vararg{HistEdge,N}},
+                      coord::Tuple{Vararg{Any,N}},
+                      weight::W
+                     ) where {R, N, W}
     Z = ntuple(identity, Val(N))
     len = map(ii -> edges[ii].nbin, Z)
     idx = map(ii -> lookup(edges[ii], coord[ii])[1], Z)
     # subtract off half of bin step to convert from fraction from left edge to fraction
     # away from center
-    del = map(ii -> lookup(edges[ii], coord[ii])[2] - one(U) / 2, Z)
+    del = map(ii -> lookup(edges[ii], coord[ii])[2] - one(W) / 2, Z)
 
     # iterate through all corners of a bounding hypercube by counting counting through
     # the permutations of {0,1} for each "axis" mapped to a bit in an integer
@@ -88,7 +90,7 @@ function _hist_inner!(::LinearBinning,
         # the fraction of the weight to assign to a particular corner of the hypercube is
         # the volume of the intersection between the bin and a similarly-shaped cube around
         # the original coordinate
-        frac = mapreduce(i -> bits[i] ? abs(del[i]) : one(U) - abs(del[i]), *, Z)
+        frac = mapreduce(i -> bits[i] ? abs(del[i]) : one(del[i]) - abs(del[i]), *, Z)
 
         dest[idxs...] += oneunit(R) * weight * frac
     end
@@ -97,20 +99,20 @@ end
 
 function _histogram!(binning::B,
                      dest::AbstractArray{R,N},
-                     edges::NTuple{N,HistEdge{T,I}},
-                     data::AbstractVector{<:NTuple{N,T}},
+                     edges::Tuple{Vararg{HistEdge,N}},
+                     data::AbstractVector{<:Tuple{Vararg{Any,N}}},
                      weights::Union{Nothing,<:AbstractVector},
-                    ) where {B<:AbstractBinning, R, N, T, I}
+                    ) where {B<:AbstractBinning, R, N}
     Z = ntuple(identity, Val(N))
 
     # run through data vector and bin entries if they are within bounds
-    wsum = isnothing(weights) ? zero(_unitless(T)) : zero(eltype(weights))
+    wsum = isnothing(weights) ? zero(_unitless(R)) : zero(eltype(weights))
     for ii in eachindex(data)
         coord = @inbounds data[ii]
         if !mapreduce(i -> edges[i].lo ≤ coord[i] ≤ edges[i].hi, &, Z)
             continue
         end
-        w = isnothing(weights) ? one(_unitless(T)) : weights[ii]
+        w = isnothing(weights) ? one(_unitless(R)) : weights[ii]
         _hist_inner!(binning, dest, edges, coord, w)
         wsum += w
     end
@@ -128,5 +130,9 @@ function _histogram!(binning::B,
 
     return wsum
 end
+
+__hist_eltype(eltypes) = _invunit(typeof(mapreduce(oneunit, *, eltypes)))
+_hist_eltype(edges::Tuple{Vararg{AbstractRange}}) = __hist_eltype(map(eltype, edges))
+_hist_eltype(edges::Tuple{Vararg{HistEdge}}) = __hist_eltype(map(eltype, edges))
 
 end  # module Histogramming
