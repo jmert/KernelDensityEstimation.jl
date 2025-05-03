@@ -135,4 +135,32 @@ __hist_eltype(eltypes) = _invunit(typeof(mapreduce(oneunit, *, eltypes)))
 _hist_eltype(edges::Tuple{Vararg{AbstractRange}}) = __hist_eltype(map(eltype, edges))
 _hist_eltype(edges::Tuple{Vararg{HistEdge}}) = __hist_eltype(map(eltype, edges))
 
+_hist_size(edges::Tuple{Vararg{AbstractRange}}) = map(e -> length(e) - 1, edges)
+_hist_size(edges::Tuple{Vararg{HistEdge}}) = map(e -> e.nbin, edges)
+
+function _histogram(binning::AbstractBinning,
+                    data::AbstractVector{<:Tuple{Vararg{Any,N}}},
+                    edges::Tuple{Vararg{HistEdge,N}};
+                    weights::Union{Nothing,<:AbstractVector} = nothing
+                   ) where {N}
+    hist = zeros(_hist_eltype(edges), _hist_size(edges)...)
+    _histogram!(binning, hist, edges, data, weights)
+    return hist
+end
+function _histogram(binning::AbstractBinning,
+                    data::AbstractVector{<:Tuple{Vararg{Any,N}}},
+                    edges::Tuple{Vararg{AbstractRange,N}};
+                    weights::Union{Nothing,<:AbstractVector} = nothing
+                   ) where {N}
+    edges′ = map(HistEdge, edges)
+    return _histogram(binning, data, edges′; weights)
+end
+function _histogram(binning::AbstractBinning,
+                    data::AbstractVector{<:Tuple{Vararg{Any,N}}},
+                    edges::Union{<:HistEdge,<:AbstractRange}...;
+                    weights::Union{Nothing,<:AbstractVector} = nothing
+                   ) where {N}
+    return _histogram(binning, data, edges; weights)
+end
+
 end  # module Histogramming

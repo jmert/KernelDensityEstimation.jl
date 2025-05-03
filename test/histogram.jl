@@ -88,7 +88,7 @@ const LB = Histogramming.LinearBinning()
 end
 
 @testset "Low Level ($(N)D, $style)" for N in 1:3, style in (HB, LB)
-    using .Histogramming: HistEdge, _histogram!
+    using .Histogramming: HistEdge, _histogram!, _histogram
 
     edges = ((0.0:0.25:1.0 for _ in 1:N)...,)
     edges′ = HistEdge.(edges)
@@ -104,6 +104,9 @@ end
     fill!(hist, 0)
     _histogram!(style, hist, edges′, x1, nothing)
     @test sum(hist) * step(edges[1])^N == 1.0
+    # compare to the allocating interface
+    @test hist == _histogram(style, x1, edges′)
+    @test hist == _histogram(style, x1, edges′; weights = [1])
 
     # out-of-bounds elements are not binned
     x0 = [(-1.0, (0.0 for _ in 1:N-1)...,)]
@@ -115,6 +118,15 @@ end
         fill!(hist, 0)
         @test (@inferred _histogram!(style, hist, edges′, x1, nothing)) === 1.0
         @test_broken (@allocated _histogram!(style, hist, edges′, x1, nothing)) == 0
+
+        @test (@inferred _histogram(style, x1, edges)) isa Array{Float64,N}
+        @test (@inferred _histogram(style, x1, edges; weights = [1])) isa Array{Float64,N}
+        @test (@inferred _histogram(style, x1, edges′)) isa Array{Float64,N}
+        @test (@inferred _histogram(style, x1, edges′; weights = [1])) isa Array{Float64,N}
+        @test (@inferred _histogram(style, x1, edges...)) isa Array{Float64,N}
+        @test (@inferred _histogram(style, x1, edges...; weights = [1])) isa Array{Float64,N}
+        @test (@inferred _histogram(style, x1, edges′...)) isa Array{Float64,N}
+        @test (@inferred _histogram(style, x1, edges′...; weights = [1])) isa Array{Float64,N}
     end
 
     @testset "Unitful numbers" begin
@@ -128,6 +140,14 @@ end
         # verify that the function accepts unitful quantities
         @test _histogram!(style, uhist, HistEdge.(uedges), vals, nothing) === 1.0
         @test sum(uhist) * mapreduce(step, *, uedges) ≈ 1.0 rtol=2eps(1.0)
+
+        uhist2 = _histogram(style, vals, uedges)
+        @test eltype(uhist2) == eltype(uhist)
+        @test uhist2 == uhist
+
+        uhist3 = _histogram(style, vals, uedges...)
+        @test eltype(uhist3) == eltype(uhist)
+        @test uhist3 == uhist
     end
 end
 
