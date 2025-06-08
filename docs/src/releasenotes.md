@@ -11,7 +11,7 @@ Depth = 2:2
 
 ---
 
-## v0.7.0 — Unreleased
+## v0.7.0 — 2025 Jun 08
 
 - A new `weights` keyword argument has been added to the [`kde`](@ref) function to support weighted data sets.
   As a consequence, the API of multiple interfaces have been changed:
@@ -21,6 +21,8 @@ Depth = 2:2
 - Revert the "accurate histogram" binning calculation made in the previous release.
   Further testing has shown that much of the extra work being done was ineffective, so no promise is currently
   made about being able to precisely bin `range(lo, hi, nbins)` (nor `LinRange(lo, hi, len)`).
+
+---
 
 ## v0.6.0 — 2024 Dec 31
 

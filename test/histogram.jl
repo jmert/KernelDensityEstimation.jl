@@ -117,7 +117,11 @@ end
     @testset "Code Generation" begin
         fill!(hist, 0)
         @test (@inferred _histogram!(style, hist, edges′, x1, nothing)) === 1.0
-        @test_broken (@allocated _histogram!(style, hist, edges′, x1, nothing)) == 0
+        if VERSION >= v"1.12.0-beta3"
+            @test (@allocated _histogram!(style, hist, edges′, x1, nothing)) == 0
+        else
+            @test_broken (@allocated _histogram!(style, hist, edges′, x1, nothing)) == 0
+        end
 
         @test (@inferred _histogram(style, x1, edges)) isa Array{Float64,N}
         @test (@inferred _histogram(style, x1, edges; weights = [1])) isa Array{Float64,N}
