@@ -1,7 +1,7 @@
 name = "KernelDensityEstimation"
 uuid = "e46ec5f4-66dc-4371-a668-81bd92d19d7d"
 authors = ["Justin Willmert <justin@willmert.me>"]
-version = "0.5.1"
+version = "0.5.2"
 
 [deps]
 FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
@@ -22,7 +22,7 @@ KDEUnicodePlotsExt = ["UnicodePlots"]
 
 [compat]
 Roots = "2.1.7"
-Makie = "0.15, 0.16, 0.17, 0.18, 0.19, 0.20, 0.21, 0.22"
+Makie = "0.15, 0.16, 0.17, 0.18, 0.19, 0.20, 0.21, 0.22, 0.23"
 UnicodePlots = "3"
 julia = "1.6"
 
