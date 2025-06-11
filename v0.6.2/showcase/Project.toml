@@ -1,0 +1,16 @@
+[deps]
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+KernelDensityEstimation = "e46ec5f4-66dc-4371-a668-81bd92d19d7d"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+
+[sources]
+KernelDensityEstimation = {path = "../../.."}
+
+[compat]
+KernelDensityEstimation = "0.5"
+Makie = "0.20,0.21"
+julia = "1.9"
+
+[extras]
+Makie = "ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a"
