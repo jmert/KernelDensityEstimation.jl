@@ -398,15 +398,29 @@ end
     end
 
     @testset "Silverman Bandwidth" begin
+        σ = rv_norm_σ
+
         # Test that the estimator approximately matches the asymptotic behavior for a
         # the known Gaussian distribution behavior.
         #   N.B. use very large numbers to reduce sample variance
         @testset "AMISE with N = $N" for N in Int.((1e6, 1e7, 1e8))
             atol = (sqrt(eps(1.0)) / N) ^ (1 // 5)  # scale error similarly to AMISE
-            σ, v = rv_norm_σ, view(rv_norm_long, 1:N)
+            v = view(rv_norm_long, 1:N)
             t = G_amise(N, σ)
             h = KDE.bandwidth(KDE.SilvermanBandwidth(), v, -6σ, 6σ, KDE.Open)
             @test t ≈ h atol=atol
+        end
+
+        # Verify that the bandwidth estimator respects the lo/hi limits and excludes
+        # out-of-bounds elements
+        v = view(rv_norm_long, 1:256)
+        h₀ = KDE.bandwidth(KDE.SilvermanBandwidth(), v, -6σ, 6σ, KDE.Closed)
+        h₁ = KDE.bandwidth(KDE.SilvermanBandwidth(), v, 0.0, 6σ, KDE.Closed)
+        let z = v, γ = (4 // 3length(z))^(1 // 5)
+            @test h₀ ≈ γ * std(z, corrected = false)
+        end
+        let z = filter(>=(0), v), γ = (4 // 3length(z))^(1 // 5)
+            @test h₁ ≈ γ * std(z, corrected = false)
         end
     end # Silverman Bandwidth
 
