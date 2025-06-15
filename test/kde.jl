@@ -422,6 +422,12 @@ end
         let z = filter(>=(0), v), γ = (4 // 3length(z))^(1 // 5)
             @test h₁ ≈ γ * std(z, corrected = false)
         end
+
+        @testset "Unitful numbers" begin
+            σ = Quantity(rv_norm_σ, u"m")
+            v = Quantity.(view(rv_norm_long, 1:100), u"m")
+            @test (@inferred KDE.bandwidth(KDE.SilvermanBandwidth(), v, -6σ, 6σ, KDE.Open)) isa eltype(v)
+        end
     end # Silverman Bandwidth
 
     @testset "ISJ Bandwidth" begin
@@ -475,6 +481,12 @@ end
               KDE.bandwidth(SilvermanBandwidth(), args...)
         @test_throws(ErrorException("ISJ estimator failed to converge. More data is needed."),
                      KDE.bandwidth(ISJBandwidth(fallback = false), args...))
+
+        @testset "Unitful numbers" begin
+            σ = Quantity(rv_norm_σ, u"m")
+            v = Quantity.(view(rv_norm_long, 1:100), u"m")
+            @test (@inferred KDE.bandwidth(KDE.ISJBandwidth(fallback = false), v, -6σ, 6σ, KDE.Open)) isa eltype(v)
+        end
     end  # ISJ Bandwidth
 
 

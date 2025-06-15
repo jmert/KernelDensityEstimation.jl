@@ -679,7 +679,7 @@ function bandwidth(::SilvermanBandwidth, v::AbstractVector{T},
     # - Section 2.9, letting ν = 2:
     #   - bw = σ̂ n^(-1/5) C₂(k)
     #     C₂(k) = 2 ( 8R(k)√π / 96κ₂² )^(1/5) == (4/3)^(1/5)
-    return iszero(σ²) ? eps(one(T)) :
+    return iszero(σ²) ? eps(oneunit(T)) :
         sqrt(σ²) * (oftype(one(T), (4one(T) / 3)) / neff)^(one(T) / 5)
 end
 
