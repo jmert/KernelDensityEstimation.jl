@@ -83,25 +83,24 @@ bounds(data::AbstractVector, (lo, hi)::NTuple{2, Union{<:Number,Nothing}}) = bou
 
 
 """
-    UnivariateKDE{T,U,R<:AbstractRange{T},V<:AbstractVector{U}} <: AbstractKDE{T}
+    UnivariateKDE{T,R<:AbstractRange,V<:AbstractVector{T}} <: AbstractKDE{T}
 
 ## Fields
 
 - `x::R`: The locations (bin centers) of the corresponding density estimate values.
 - `f::V`: The density estimate values.
 """
-struct UnivariateKDE{T,U,R<:AbstractRange{T},V<:AbstractVector{U}} <: AbstractKDE{T}
+struct UnivariateKDE{T,R<:AbstractRange,V<:AbstractVector{T}} <: AbstractKDE{T}
     x::R
     f::V
 end
 
-function _univariate_type(::Type{T}) where {T}
-    U = _invunit(T)
-    R = typeof(range(zero(T), zero(T), length = 1))
-    V = Vector{U}
-    return UnivariateKDE{T, U, R, V}
+function univariate_type_from_axis_eltype(::Type{S}) where {S}
+    T = _invunit(S)
+    R = typeof(range(zero(S), zero(S), length = 1))
+    V = Vector{T}
+    return UnivariateKDE{T,R,V}
 end
-UnivariateKDE{T}(x, f) where {T} = _univariate_type(T)(x, f)
 
 
 function Base.show(io::IO, K::UnivariateKDE{T}) where {T}
@@ -207,7 +206,7 @@ end
 
 function UnivariateKDEInfo{T}(; kwargs...) where {T}
     R = _unitless(T)
-    K = _univariate_type(R)
+    K = univariate_type_from_axis_eltype(R)
     UnivariateKDEInfo{T,R,K}(; kwargs...)
 end
 
@@ -367,10 +366,10 @@ function estimate(method::AbstractBinningKDE,
         edges = range(lo, hi, length = nbins + 1)
         centers = edges[2:end] .- step(edges) / 2
     end
-    estim = UnivariateKDE{T}(centers, f)
+    estim = UnivariateKDE(centers, f)
 
     info.kernel = let R = _unitless(T)
-        UnivariateKDE{R}(range(zero(R), zero(R), length = 1), [one(R)])
+        UnivariateKDE(range(zero(R), zero(R), length = 1), [one(R)])
     end
     return estim, info
 end
@@ -422,21 +421,22 @@ function estimate(method::BasicKDE,
     binned, info = estimate(method.binning, data, weights, info)
     return estimate(method, binned, info)
 end
-function estimate(::BasicKDE, binned::UnivariateKDE{T}, info::UnivariateKDEInfo) where {T}
+function estimate(::BasicKDE, binned::UnivariateKDE, info::UnivariateKDEInfo)
     x, f = binned
-    bw = info.bandwidth / oneunit(T)
-    Δx = step(x) / oneunit(T)
+    T = _invunit(eltype(x))
+    bw = info.bandwidth * oneunit(T)
+    Δx = step(x) * oneunit(T)
 
     # make sure the kernel axis is centered on zero
     nn = ceil(Int, 4bw / Δx)
     xx = range(-nn * Δx, nn * Δx, step = Δx)
 
     kernel = kernel_gaussian(xx, bw)
-    info.kernel = UnivariateKDE{eltype(xx)}(xx, kernel)
+    info.kernel = UnivariateKDE(xx, kernel)
 
     # convolve the data with the kernel to construct a density estimate
     f̂ = conv(f, kernel, ConvShape.SAME)
-    estim = UnivariateKDE{T}(x, f̂)
+    estim = UnivariateKDE(x, f̂)
     return estim, info
 end
 
@@ -469,8 +469,7 @@ function estimate(method::LinearBoundaryKDE,
     binned, info = estimate(method.binning, data, weights, info)
     return estimate(method, binned, info)
 end
-function estimate(method::LinearBoundaryKDE, binned::UnivariateKDE{T}, info::UnivariateKDEInfo) where {T}
-    R = _unitless(T)
+function estimate(method::LinearBoundaryKDE, binned::UnivariateKDE, info::UnivariateKDEInfo)
     h = binned.f
     (x, f), info = estimate(BasicKDE(method.binning), binned, info)
 
@@ -479,6 +478,7 @@ function estimate(method::LinearBoundaryKDE, binned::UnivariateKDE{T}, info::Uni
     #   N.B. the denominator of A₀ should have [W₂]⁻¹ instead of W₂
     kx, K = info.kernel
     KI = eachindex(K)
+    R = eltype(K)
     K̂ = plan_conv(f, K)
 
     Θ = fill!(similar(f, R), one(R))
@@ -503,14 +503,14 @@ function estimate(method::LinearBoundaryKDE, binned::UnivariateKDE{T}, info::Uni
     #      non-negative.
     @simd for ii in eachindex(f)
         @inbounds begin
-            f₀ = max(f[ii], zero(_invunit(T)))
+            f₀ = max(f[ii], zero(eltype(f)))
             f₁ = f₀ / μ₀[ii]
             f₂ = (μ₂[ii] * f[ii] - μ₁[ii] * f′[ii]) / (μ₀[ii] * μ₂[ii] - μ₁[ii]^2)
             f[ii] = iszero(f₁) ? f₁ : f₁ * exp(f₂ / f₁ - one(f₁))
         end
     end
 
-    return UnivariateKDE{T}(x, f), info
+    return UnivariateKDE(x, f), info
 end
 
 
@@ -550,11 +550,12 @@ function estimate(method::MultiplicativeBiasKDE,
     binned, info = estimate(method.binning, data, weights, info)
     return estimate(method, binned, info)
 end
-function estimate(method::MultiplicativeBiasKDE, binned::UnivariateKDE{T}, info::UnivariateKDEInfo) where {T}
+function estimate(method::MultiplicativeBiasKDE, binned::UnivariateKDE, info::UnivariateKDEInfo)
     # generate pilot KDE
     pilot, info = estimate(method.method, binned, info)
     I = eachindex(pilot.f)
 
+    T = _invunit(eltype(binned))
     # use the pilot KDE to flatten the unsmoothed histogram
     @inline nonzero(x) = iszero(x) ? one(x) : x * oneunit(T)
     @simd for ii in I

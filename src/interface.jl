@@ -1,7 +1,7 @@
 """
     AbstractKDE{T}
 
-Abstract supertype of kernel density estimates.
+Abstract supertype of kernel density estimates with element type `T`.
 
 See also [`UnivariateKDE`](@ref)
 """

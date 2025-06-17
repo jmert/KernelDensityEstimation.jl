@@ -20,6 +20,38 @@ Depth = 2:2
       [`bounds`](@ref) function, which has also impacted the built-in definitions and behaviors of the `bounds`
       methods.
 
+    - The type parameterizations of [`AbstractKDE`](@ref) and [`UnivariateKDE`](@ref) have changed in a
+      backwards-incompatible way.
+
+      Previously, the univariate structure had four type parameters and subtype relationship,
+      ```julia
+      UnivariateKDE{T_input, T_density,
+                    R<:AbstractRange{T_input},
+                    V<:AbstractVector{T_density}
+                   } <: AbstractKDE{T_input}
+      ```
+      where the first two parameters are the element types of the input data and output density estimate, respectively.
+      The trailing two then specialize the container types of the binning and density vectors, but critically they use
+      separate type variables in order to support unitful quantities where the units are inverses of one another.
+      Notably, the type relationship to the abstract supertype was declared to use the **input** element type.
+
+      The new type definition is instead
+      ```julia
+      UnivariateKDE{T_density,
+                    R<:AbstractRange,
+                    V<:AbstractVector{T_density}
+                   } <: AbstractKDE{T_density}
+      ```
+      The trailing two type parameters are the same, but now the **output** element type of the density array is used in
+      the supertype relationship.
+      The input element type also no longer appear as an explicit type parameter.
+
+      These changes are required to align with a future definition of multivariate density estimates.
+      The explicit input element type is dropped since each axis may have different element type (i.e. units) and are
+      implicitly available via the axis range(s).
+      In contrast, the element type of the density array is unique, so this is the natural choice to use in the supertype
+      relationship.
+
 ---
 
 ## v0.7.0 — 2025 Jun 08

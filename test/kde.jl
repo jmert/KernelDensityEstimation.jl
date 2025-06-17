@@ -45,9 +45,9 @@ rv_norm_long = rv_norm_σ .* randn(Random.seed!(Random.default_rng(), 1234), Int
 
     # Verify that the kernel's type is fully known and inferrable
     info = KDE.UnivariateKDEInfo{Float32}(; method)
-    info.kernel = KDE.UnivariateKDE{Float32}(range(0f0, 0f0, length = 1), [1f0])
+    info.kernel = KDE.UnivariateKDE(range(0f0, 0f0, length = 1), [1f0])
     get_kernel(info) = info.kernel
-    @test (@inferred Nothing get_kernel(info)) isa KDE.UnivariateKDE{Float32,Float32}
+    @test (@inferred Nothing get_kernel(info)) isa KDE.UnivariateKDE{Float32,<:AbstractRange{Float32},Vector{Float32}}
 end
 
 @testset "Bounds Handling" begin
@@ -205,7 +205,7 @@ end
     @test info.bandwidth isa Float32
 
 
-    expT = Tuple{KDE.UnivariateKDE{Float64,Float64,<:AbstractRange{Float64},<:AbstractVector{Float64}},
+    expT = Tuple{KDE.UnivariateKDE{Float64,<:AbstractRange{Float64},<:AbstractVector{Float64}},
                  KDE.UnivariateKDEInfo{Float64,Float64}}
     @test @inferred(estimate(KDE.HistogramBinning(), [1.0, 2.0]; nbins = 2, kws...)) isa expT
 end
@@ -612,7 +612,7 @@ end  # Bandwidth Estimators
 
         U = typeof(1.0u"m")
         R = typeof(1 / 1.0u"m")
-        @test Ku isa KDE.UnivariateKDE{U, R, <:AbstractRange{U}, <:AbstractVector{R}}
+        @test Ku isa KDE.UnivariateKDE{R, <:AbstractRange{U}, <:AbstractVector{R}}
     end
 end
 
@@ -638,8 +638,9 @@ end
 
         # Verify the headers appear as expected
         @test occursin("UnivariateKDE{Float64}", shortmsg)
-        @test occursin("UnivariateKDE{Float64, Float64,", longmsg)  # full parametric typing
         @test occursin("UnivariateKDE{Float64}", limitlongmsg)
+        fulltype = sprint(show, typeof(K), context = (:limit => false, :compact => false))
+        @test occursin(fulltype, longmsg)  # full parametric typing
     end
 
     @testset "UnivariateKDEInfo" begin
