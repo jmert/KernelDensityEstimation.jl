@@ -1,6 +1,7 @@
 using .KDE: estimate
 
 using FFTW
+using LinearAlgebra: I
 using Statistics: std, var
 using Random: Random, randn
 using Unitful
@@ -408,6 +409,68 @@ end
 
     @testset "Silverman Bandwidth" begin
         σ = rv_norm_σ
+
+        @testset "Variance Estimation" begin
+            # Check the implementation of the standard deviation and effective sample size
+            # calculation
+            v = view(rv_norm_long, 1:1_000_000)
+            v1 = (v,)
+            lo = (-10σ,)
+            hi = (+10σ,)
+            neff1, var1 = @inferred KDE._neff_covar(v1, lo, hi, nothing)
+            @test neff1 == length(v)
+            @test var1 ≈ σ^2 atol = 16.0 / sqrt(neff1)
+            # weights = nothing is same as uniform (all ones)
+            neff2, var2 = @inferred KDE._neff_covar(v1, lo, hi, fill(1.0, length(v)))
+            @test neff2 == neff1
+            @test var2 == var1
+
+            # 1D is special-cased
+            #   It should not allocate
+            if VERSION >= v"1.12.0-beta3"
+                @test (@allocated KDE._neff_covar(v1, lo, hi, nothing)) == 0
+            else
+                @test_broken (@allocated KDE._neff_covar(v1, lo, hi, nothing)) == 0
+            end
+            # 1D is special cased — verify that the general case matches
+            gensig = Tuple{#=coords=# Tuple{Vararg{AbstractVector,N}},
+                           #=lo=# Tuple{Vararg{Any,N}},
+                           #=hi=# Tuple{Vararg{Any,N}},
+                           #=weights=# Nothing
+                           } where N
+            neff3, var3 = invoke(KDE._neff_covar, gensig, v1, lo, hi, nothing)
+            @test neff3 == neff1
+            @test var3 isa AbstractMatrix{Float64}
+            @test only(var3) == var1
+
+
+            # multidimensional covariances
+
+            # using the same data multiple times is perfect correlation, so all entries
+            # in the covariance matrix are identical (and equal to the variance of the data)
+            #   2x2
+            neff, covar = KDE._neff_covar((v, v), -10σ.*(1,1), 10σ.*(1,1), nothing)
+            @test neff == length(v)
+            @test covar == var1 .* ones(2, 2)
+            #   3x3
+            neff, covar = KDE._neff_covar((v, v, v), -10σ.*(1,1,1), 10σ.*(1,1,1), nothing)
+            @test neff == length(v)
+            @test covar == var1 .* ones(3, 3)
+            # circularly-shifting one of the inputs decorrelates the inputs, so then the
+            # covariance matrix should be approximately diagonal
+            w = circshift(v, -1)
+            #   2x2
+            neff, covar = KDE._neff_covar((v, w), -10σ.*(1,1), 10σ.*(1,1), nothing)
+            @test neff == length(v)
+            @test covar ≈ var1 * I  atol=16/sqrt(length(v))
+            #   3x3 (not diagonal)
+            neff, covar = KDE._neff_covar((v, v, w), -10σ.*(1,1,1), 10σ.*(1,1,1), nothing)
+            @test neff == length(v)
+            Σ = [1 1 0
+                 1 1 0
+                 0 0 1] .* var1
+            @test covar ≈ Σ  atol=16/sqrt(length(v))
+        end
 
         # Test that the estimator approximately matches the asymptotic behavior for a
         # the known Gaussian distribution behavior.

@@ -1,3 +1,99 @@
+import LinearAlgebra: Symmetric, cholesky
+
+# Get the effective sample size and (co)variance simultaneously
+#
+#   - Calculate variance via Welford's algorithm:
+#
+#     https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford%27s_online_algorithm
+#
+#   - Calculate the effective sample size, based on weights and the bounds, using the
+#     Kish effective sample size definition:
+#
+#         n_eff = sum(weights)^2 / sum(weights .^ 2)
+#
+#     https://search.r-project.org/CRAN/refmans/svyweight/html/eff_n.html
+#     https://en.wikipedia.org/wiki/Weighted_arithmetic_mean#Reliability_weights
+function _neff_covar(coords::Tuple{Vararg{AbstractVector,N}},
+                     lo::Tuple{Vararg{Any,N}},
+                     hi::Tuple{Vararg{Any,N}},
+                     weights::Union{Nothing,<:AbstractVector}) where {N}
+    T = promote_type(map(_unitless∘eltype, coords)...)
+    wsum = wsqr = isnothing(weights) ? zero(T) : zero(eltype(weights))
+
+    x = zeros(T, N)
+    μ = zeros(T, N)
+    μ₋₁ = zeros(T, N)
+    Σ = zeros(T, N, N)
+    I = isnothing(weights) ? eachindex(coords...) : eachindex(weights, coords...)
+    for ii in I
+        # @. x = coords[ii] * _invunit(typeof(coords[ii]))
+        # !all(@. lo ≤ x ≤ hi) && continue
+        indomain = true
+        for jj in 1:N
+            v = coords[jj][ii]
+            x[jj] = v * oneunit(_invunit(typeof(v)))
+            indomain &= lo[jj] ≤ v ≤ hi[jj]
+        end
+        !indomain && continue
+
+        w = isnothing(weights) ? one(wsum) : weights[ii]
+        wsum += w
+        wsqr += w^2
+        ω = w / wsum
+        ω̄ = one(ω) - ω
+
+        # @. μ₋₁ = μ
+        # @. μ = ω̄ * μ₋₁ + ω * x
+        for jj in 1:N
+            μ₋₁[jj] = μ[jj]
+            μ[jj] = ω̄ * μ[jj] + ω * x[jj]
+        end
+        # @. Σ = ω̄ * Σ + ω * (x - μ) * (x - μ₋₁)'
+        #  with only the upper-triangle filled
+        for jj in 1:N
+            yy = x[jj] - μ₋₁[jj]
+            for kk in 1:jj
+                Σ[kk,jj] = ω̄ * Σ[kk, jj] + ω * (x[kk] - μ[kk]) * yy
+            end
+        end
+    end
+    neff = wsum^2 / wsqr
+    return neff, Symmetric(Σ)
+end
+
+# specialize for 1D case where the variance is scalar, so allocating arrays can be avoided
+function _neff_covar(coords::Tuple{AbstractVector},
+                     lo::Tuple{Any},
+                     hi::Tuple{Any},
+                     weights::Union{Nothing,<:AbstractVector})
+    T = promote_type(map(_unitless∘eltype, coords)...)
+    wsum = wsqr = isnothing(weights) ? zero(T) : zero(eltype(weights))
+
+    x = zero(T)
+    μ = zero(T)
+    μ₋₁ = zero(T)
+    Σ = zero(T)
+    I = isnothing(weights) ? eachindex(coords...) : eachindex(weights, coords...)
+    for ii in I
+        v = coords[1][ii]
+        lo[1] ≤ v ≤ hi[1] || continue
+        x = v * oneunit(_invunit(typeof(v)))
+
+        w = isnothing(weights) ? one(wsum) : weights[ii]
+        wsum += w
+        wsqr += w^2
+        ω = w / wsum
+        ω̄ = one(ω) - ω
+
+        μ₋₁ = μ
+        μ = ω̄ * μ + ω * x
+        Σ = ω̄ * Σ + ω * (x - μ) * (x - μ₋₁)
+    end
+    neff = wsum^2 / wsqr
+    return neff, Σ
+end
+
+
 """
     SilvermanBandwidth <: AbstractBandwidthEstimator
 
@@ -27,26 +123,8 @@ function bandwidth(::SilvermanBandwidth, v::AbstractVector{T},
                    lo::T, hi::T, ::Boundary.T;
                    weights::Union{Nothing, <:AbstractVector} = nothing
                    ) where {T}
-    # Get the effective sample size and variance simultaneously
-    #   - See note in init() about neffective calculation
-    #   - Calculate variance via Welford's algorithm:
-    #     https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford%27s_online_algorithm
-    wsum = zero(_unitless(T))
-    wsqr = zero(wsum)
-    μ = μ₋₁ = zero(T)
-    σ² = zero(T)^2  # unitful numbers require correct squaring
-    I = isnothing(weights) ? eachindex(v) : eachindex(v, weights)
-    for ii in I
-        x = @inbounds v[ii]
-        w = isnothing(weights) ? one(wsum) : @inbounds weights[ii]
-        lo ≤ x ≤ hi || continue  # skip out-of-bounds elements
-        wsum += w
-        wsqr += w^2
-        ω = w / wsum
-        μ₋₁, μ = μ, (one(T) - ω) * μ + ω * x
-        σ² = (one(T) - ω) * σ² + ω * (x - μ) * (x - μ₋₁)
-    end
-    neff = wsum^2 / wsqr
+    neff, Σ = _neff_covar((v,), (lo,), (hi,), weights)
+    σ = sqrt(Σ) * oneunit(eltype(v))
 
     # From Hansen (2009) — https://users.ssc.wisc.edu/~bhansen/718/NonParametrics1.pdf
     # for a Gaussian kernel:
@@ -56,9 +134,10 @@ function bandwidth(::SilvermanBandwidth, v::AbstractVector{T},
     # - Section 2.9, letting ν = 2:
     #   - bw = σ̂ n^(-1/5) C₂(k)
     #     C₂(k) = 2 ( 8R(k)√π / 96κ₂² )^(1/5) == (4/3)^(1/5)
-    return iszero(σ²) ? eps(oneunit(T)) :
-        sqrt(σ²) * (oftype(one(T), (4one(T) / 3)) / neff)^(one(T) / 5)
+    return iszero(σ) ? eps(oneunit(T)) :
+        σ * (oftype(one(T), (4one(T) / 3)) / neff)^(one(T) / 5)
 end
+
 
 module ISJ
     # An implementation of Brent's method, translated from the algorithm described in
