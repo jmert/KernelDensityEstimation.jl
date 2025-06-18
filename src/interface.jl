@@ -1,13 +1,14 @@
 """
-    AbstractKDE{T}
+    AbstractKDE{T,N}
 
-Abstract supertype of kernel density estimates with element type `T`.
+Abstract supertype of kernel density estimates with element type `T` and dimensionality `N`.
 
 See also [`UnivariateKDE`](@ref)
 """
-abstract type AbstractKDE{T} end
+abstract type AbstractKDE{T,N} end
 
-Base.eltype(::AbstractKDE{T}) where {T} = T
+Base.eltype(::Type{<:AbstractKDE{T,N}}) where {T,N} = T
+Base.ndims(::Type{<:AbstractKDE{T,N}}) where {T,N} = N
 
 
 """

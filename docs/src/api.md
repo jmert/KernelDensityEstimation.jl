@@ -13,7 +13,9 @@ Depth = 2:2
 
 ```@docs
 kde
+MultivariateKDE
 UnivariateKDE
+BivariateKDE
 Boundary
 ```
 

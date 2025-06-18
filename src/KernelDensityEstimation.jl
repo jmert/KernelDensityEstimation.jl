@@ -5,7 +5,8 @@ export kde
 @static if VERSION >= v"1.11.0-DEV.469"
     @eval $(Expr(:public,
                  # KDE objects
-                 :AbstractKDE, :UnivariateKDE, :AbstractKDEInfo, :UnivariateKDEInfo,
+                 :AbstractKDE, :MultivariateKDE, :UnivariateKDE, :BivariateKDE,
+                 :AbstractKDEInfo, :UnivariateKDEInfo,
                  # KDE pipeline
                  :AbstractKDEMethod, :AbstractBinningKDE, :HistogramBinning, :LinearBinning,
                  :BasicKDE, :LinearBoundaryKDE, :MultiplicativeBiasKDE,

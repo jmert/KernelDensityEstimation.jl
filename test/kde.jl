@@ -17,6 +17,13 @@ gaussian(x, σ) = exp.(-x .^ 2 ./ 2σ^2) ./ sqrt(2oftype(σ, π) * σ^2)
 rv_norm_σ = 2.1
 rv_norm_long = rv_norm_σ .* randn(Random.seed!(Random.default_rng(), 1234), Int(1e8))
 
+@testset "Interface" begin
+    @test eltype(KDE.UnivariateKDE{Float32}) == Float32
+    @test ndims(KDE.UnivariateKDE{Float32}) == 1
+
+    @test eltype(KDE.BivariateKDE{Int}) == Int
+    @test ndims(KDE.BivariateKDE{Int}) == 2
+end
 
 @testset "Options Handling" begin
     import .KDE: init
@@ -631,15 +638,18 @@ end
 
         # For the longer output, there's both a limited and unlimited variation. Again,
         # check that the lengths differ as expected.
-        show(IOContext(buf, :compact => false, :limit => true), K)
+        show(IOContext(buf, :limit => true), K)
         limitlongmsg = String(take!(buf))
         @test length(shortmsg) < length(limitlongmsg)
         @test length(limitlongmsg) < length(longmsg)
 
-        # Verify the headers appear as expected
-        @test occursin("UnivariateKDE{Float64}", shortmsg)
-        @test occursin("UnivariateKDE{Float64}", limitlongmsg)
-        fulltype = sprint(show, typeof(K), context = (:limit => false, :compact => false))
+        # Verify the headers appear as expected --- the expected header is the shorter
+        # alias only after the `public` feature was added
+        type_expect = isdefined(Base, :ispublic) ? "UnivariateKDE{Float64}" :
+                                                   "MultivariateKDE{Float64, 1,"
+        @test occursin(type_expect, shortmsg)
+        @test occursin(type_expect, limitlongmsg)
+        fulltype = sprint(show, typeof(K), context = IOContext(buf, :limit => false, :compact => false))
         @test occursin(fulltype, longmsg)  # full parametric typing
     end
 
@@ -654,7 +664,7 @@ end
 
         # For the longer output, there's both a limited and unlimited variation. Again,
         # check that the lengths differ as expected.
-        show(IOContext(buf, :compact => false, :limit => true), info)
+        show(IOContext(buf, :limit => true), info)
         limitlongmsg = String(take!(buf))
         @test length(shortmsg) < length(limitlongmsg)
         @test length(limitlongmsg) < length(longmsg)

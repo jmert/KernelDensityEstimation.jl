@@ -35,7 +35,8 @@ Depth = 2:2
       separate type variables in order to support unitful quantities where the units are inverses of one another.
       Notably, the type relationship to the abstract supertype was declared to use the **input** element type.
 
-      The new type definition is instead
+      The new type definition is instead an alias of the more generic [`MultivariateKDE`](@ref) struct and takes the
+      form
       ```julia
       UnivariateKDE{T_density,
                     R<:AbstractRange,
@@ -49,8 +50,12 @@ Depth = 2:2
       These changes are required to align with a future definition of multivariate density estimates.
       The explicit input element type is dropped since each axis may have different element type (i.e. units) and are
       implicitly available via the axis range(s).
-      In contrast, the element type of the density array is unique, so this is the natural choice to use in the supertype
-      relationship.
+      In contrast, the element type of the density array is unique, so this is the natural choice to use in the
+      supertype relationship.
+
+     - An **experimental** [`MultivariateKDE`](@ref) type has been added to support higher dimensional density
+       estimation.
+       [`UnivariateKDE`](@ref) and [`BivariateKDE`](@ref) are type aliases for the 1- and 2-dimensional cases.
 
 ---
 

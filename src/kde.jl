@@ -83,35 +83,52 @@ bounds(data::AbstractVector, (lo, hi)::NTuple{2, Union{<:Number,Nothing}}) = bou
 
 
 """
-    UnivariateKDE{T,R<:AbstractRange,V<:AbstractVector{T}} <: AbstractKDE{T}
+    MultivariateKDE{T, N, R<:Tuple{Vararg{AbstractRange,N}, V<:AbstractVector{T}} <: AbstractKDE{T, N}
 
 ## Fields
 
-- `x::R`: The locations (bin centers) of the corresponding density estimate values.
-- `f::V`: The density estimate values.
+- `axes::R`: An `N`-tuple of the locations (bin centers) along the axes of the density
+  estimate. Each axis is a range type with uniform [`step`](@extref `Base.step`) size.
+- `density::V`: An `N`-dimensional array with element type `T` of the density estimate values.
+
+See also [`UnivariateKDE`](@ref) and [`BivariateKDE`](@ref).
 """
-struct UnivariateKDE{T,R<:AbstractRange,V<:AbstractVector{T}} <: AbstractKDE{T}
-    x::R
-    f::V
+struct MultivariateKDE{T, N, R<:Tuple{Vararg{AbstractRange,N}}, V<:AbstractArray{T,N}} <: AbstractKDE{T, N}
+    axes::R
+    density::V
 end
 
-function univariate_type_from_axis_eltype(::Type{S}) where {S}
-    T = _invunit(S)
-    R = typeof(range(zero(S), zero(S), length = 1))
-    V = Vector{T}
-    return UnivariateKDE{T,R,V}
+function _mvtype_eltypes(eltypes::NTuple{N,DataType}) where {N}
+    T = _invunit(typeof(mapreduce(oneunit, *, eltypes)))
+    R = map(eltypes) do Ti
+        typeof(range(zero(Ti), zero(Ti), length = 1))
+    end
+    V = Array{T,N}
+    return MultivariateKDE{T,N,Tuple{R...},V}
 end
+multivariate_type_from_axis_eltypes(eltypes::Type...) = _mvtype_eltypes(eltypes)
 
-
-function Base.show(io::IO, K::UnivariateKDE{T}) where {T}
+function _show_mvtype(io, K::MultivariateKDE{T, N}) where {T, N}
+    if isdefined(Base, :ispublic)
+        print(io, MultivariateKDE, '{', T, ", ", N, '}')
+    else
+        print(io, typeof(K))
+    end
+end
+_show_mvaxes(io, K::MultivariateKDE) = show(io, K.axes)
+function Base.show(io::IO, K::MultivariateKDE{T,N}) where {T,N}
     if get(io, :compact, false)::Bool
-        print(io, UnivariateKDE, '{', T, "}(…)")
+        _show_mvtype(io, K)
+        print(io, "(…)")
     else
         if get(io, :limit, false)::Bool
-            print(io, UnivariateKDE, '{', T, '}', '(')
             io′ = IOContext(io, :compact => true)
-            print(io′, first(K.x), ':', step(K.x), ':', last(K.x), ", ")
-            show(io′, K.f)
+
+            _show_mvtype(io, K)
+            print(io, "(")
+            _show_mvaxes(io′, K)
+            print(io, ", ")
+            show(io′, K.density)
             print(io, ')')
         else
             invoke(show, Tuple{typeof(io), Any}, io, K)
@@ -119,8 +136,100 @@ function Base.show(io::IO, K::UnivariateKDE{T}) where {T}
     end
 end
 
-Base.:(==)(K1::UnivariateKDE, K2::UnivariateKDE) = K1.x == K2.x && K1.f == K2.f
-Base.hash(K::UnivariateKDE, h::UInt) = hash(K.f, hash(K.x, hash(:UnivariateKDE, h)))
+Base.:(==)(K1::MultivariateKDE, K2::MultivariateKDE) = K1.axes == K2.axes && K1.density == K2.density
+Base.hash(K::MultivariateKDE, h::UInt) = hash(K.density, hash(K.axes, hash(:MultivariateKDE, h)))
+
+
+"""
+    UnivariateKDE{T, R, V} = MultivariateKDE{T, 1, Tuple{R}, V}
+
+A simplifying alias of a 1-dimensional [`MultivariateKDE`](@ref) structure.
+
+## Properties
+
+The following properties are defined to supplement the fields of the underlying
+[`MultivariateKDE`](@ref) struct.
+
+- `x`: An alias for the first (and only) axis; i.e. `K.x == K.axes[1]`
+- `f`: An alias for the name `density` (for backwards compatibility).
+"""
+const UnivariateKDE{T,R,V} = MultivariateKDE{T,1,Tuple{R},V}
+
+function UnivariateKDE(x::AbstractRange, v::AbstractVector)
+    T = eltype(v)
+    R = Tuple{typeof(x)}
+    V = typeof(v)
+    return MultivariateKDE{T,1,R,V}((x,), v)
+end
+
+Base.propertynames(::UnivariateKDE) = (fieldnames(UnivariateKDE)..., :x, :f)
+function Base.getproperty(K::UnivariateKDE, sym::Symbol)
+    sym == :x && return getfield(K, :axes)[1]
+    sym == :f && return getfield(K, :density)
+    return getfield(K, sym)
+end
+function _show_mvtype(io, K::UnivariateKDE{T, N}) where {T, N}
+    if isdefined(Base, :ispublic)
+        print(io, UnivariateKDE, '{', T, '}')
+    else
+        print(io, typeof(K))
+    end
+end
+_show_mvaxes(io, K::UnivariateKDE{T}) where {T} = show(io, K.x)
+
+# define basic iteration syntax to destructure the contents of a UnivariateKDE;
+#   note that property destructuring syntax should be preferred, but that is not available
+#   until Julia 1.8, so include this for more convenient use in older Julia versions
+Base.iterate(estim::UnivariateKDE) = iterate(estim, Val(:x))
+Base.iterate(estim::UnivariateKDE, ::Val{:x}) = (estim.x, Val(:f))
+Base.iterate(estim::UnivariateKDE, ::Val{:f}) = (estim.f, nothing)
+Base.iterate(::UnivariateKDE, ::Any) = nothing
+
+
+"""
+    BivariateKDE{T, R, V} = MultivariateKDE{T, 2, R, V}
+
+A simplifying alias of a 2-dimensional [`MultivariateKDE`](@ref) structure.
+
+## Properties
+
+The following properties are defined to supplement the fields of the underlying
+[`MultivariateKDE`](@ref) struct.
+
+- `x`: An alias for the first axis; i.e. `K.x == K.axes[1]`
+- `y`: An alias for the first (and last) axis; i.e. `K.y == K.axes[2]`
+- `f`: An alias for the name `density` (for consistency with `UnivariateKDE`)
+"""
+const BivariateKDE{T,R,V} = MultivariateKDE{T,2,R,V}
+
+function BivariateKDE(x::AbstractRange, y::AbstractRange, v::AbstractVector)
+    T = eltype(v)
+    R = Tuple{typeof(x), typeof(y)}
+    V = typeof(v)
+    return MultivariateKDE{T,1,R,V}((x, y), v)
+end
+
+Base.propertynames(::BivariateKDE) = (fieldnames(BivariateKDE)..., :x, :y, :f)
+function Base.getproperty(K::BivariateKDE, sym::Symbol)
+    sym == :x && return getfield(K, :axes)[1]
+    sym == :y && return getfield(K, :axes)[2]
+    sym == :f && return getfield(K, :density)
+    return getfield(K, sym)
+end
+function _show_mvtype(io, K::BivariateKDE{T, N}) where {T, N}
+    if isdefined(Base, :ispublic)
+        print(io, BivariateKDE, '{', T, '}')
+    else
+        print(io, typeof(K))
+    end
+end
+_show_mvaxes(io, K::BivariateKDE{T}) where {T} = (show(io, K.x); print(io, ", "); show(io, K.y))
+
+Base.iterate(estim::BivariateKDE) = iterate(estim, Val(:x))
+Base.iterate(estim::BivariateKDE, ::Val{:x}) = (estim.x, Val(:y))
+Base.iterate(estim::BivariateKDE, ::Val{:y}) = (estim.y, Val(:f))
+Base.iterate(estim::BivariateKDE, ::Val{:f}) = (estim.f, nothing)
+Base.iterate(::BivariateKDE, ::Any) = nothing
 
 
 """
@@ -206,7 +315,7 @@ end
 
 function UnivariateKDEInfo{T}(; kwargs...) where {T}
     R = _unitless(T)
-    K = univariate_type_from_axis_eltype(R)
+    K = multivariate_type_from_axis_eltypes(R)
     UnivariateKDEInfo{T,R,K}(; kwargs...)
 end
 
@@ -240,14 +349,6 @@ let wd = maximum(map(length ∘ string, fieldnames(UnivariateKDEInfo)))
     end
 end
 
-
-# define basic iteration syntax to destructure the contents of a UnivariateKDE;
-#   note that property destructuring syntax should be preferred, but that is not available
-#   until Julia 1.8, so include this for more convenient use in older Julia versions
-Base.iterate(estim::UnivariateKDE) = iterate(estim, Val(:x))
-Base.iterate(estim::UnivariateKDE, ::Val{:x}) = (estim.x, Val(:f))
-Base.iterate(estim::UnivariateKDE, ::Val{:f}) = (estim.f, nothing)
-Base.iterate(::UnivariateKDE, ::Any) = nothing
 
 
 @noinline function _warn_unused(kwargs)
