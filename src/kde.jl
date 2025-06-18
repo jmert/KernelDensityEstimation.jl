@@ -407,8 +407,7 @@ function estimate(method::AbstractBinningKDE,
                   info::UnivariateKDEInfo) where {T}
     lo, hi, nbins = info.lo, info.hi, info.nbins
 
-    data′ = reinterpret(reshape, Tuple{T}, data)
-    f = Histogramming._histogram(method, data′,
+    f = Histogramming._histogram(method, (data,),
                                  (Histogramming.HistEdge(lo, hi, nbins),); weights)
     if lo == hi
         centers = range(lo, hi, length = 1)

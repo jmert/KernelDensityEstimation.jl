@@ -21,7 +21,7 @@ struct HistEdge{T,I}
         return new{T,I}(lo, hi, nbin, Δx, Δs)
     end
 end
-HistEdge(edge::AbstractRange) = HistEdge(first(edge), last(edge), length(edge) - 1)
+HistEdge(edge::AbstractRange) = HistEdge(first(edge), last(edge), Int(length(edge) - 1))
 
 Base.eltype(::HistEdge{T}) where {T} = T
 
@@ -97,15 +97,21 @@ end
 function _histogram!(binning::B,
                      dest::AbstractArray{R,N},
                      edges::Tuple{Vararg{HistEdge,N}},
-                     data::AbstractVector{<:Tuple{Vararg{Any,N}}},
+                     data::Tuple{Vararg{AbstractVector,N}},
                      weights::Union{Nothing,<:AbstractVector},
                     ) where {B<:AbstractBinningKDE, R, N}
     Z = ntuple(identity, Val(N))
 
     # run through data vector and bin entries if they are within bounds
-    wsum = isnothing(weights) ? zero(_unitless(R)) : zero(eltype(weights))
-    for ii in eachindex(data)
-        coord = @inbounds data[ii]
+    I = eachindex(data...)
+    if isnothing(weights)
+        wsum = zero(_unitless(R))
+    else
+        I = eachindex(I, weights)
+        wsum = zero(eltype(weights))
+    end
+    for ii in I
+        coord = map(i -> (@inbounds data[i][ii]), Z)
         if !mapreduce(i -> edges[i].lo ≤ coord[i] ≤ edges[i].hi, &, Z)
             continue
         end
@@ -136,7 +142,7 @@ _hist_size(edges::Tuple{Vararg{AbstractRange}}) = map(e -> length(e) - 1, edges)
 _hist_size(edges::Tuple{Vararg{HistEdge}}) = map(e -> e.nbin, edges)
 
 function _histogram(binning::AbstractBinningKDE,
-                    data::AbstractVector{<:Tuple{Vararg{Any,N}}},
+                    data::Tuple{Vararg{AbstractVector,N}},
                     edges::Tuple{Vararg{HistEdge,N}};
                     weights::Union{Nothing,<:AbstractVector} = nothing
                    ) where {N}
@@ -145,7 +151,7 @@ function _histogram(binning::AbstractBinningKDE,
     return hist
 end
 function _histogram(binning::AbstractBinningKDE,
-                    data::AbstractVector{<:Tuple{Vararg{Any,N}}},
+                    data::Tuple{Vararg{AbstractVector,N}},
                     edges::Tuple{Vararg{AbstractRange,N}};
                     weights::Union{Nothing,<:AbstractVector} = nothing
                    ) where {N}
@@ -153,7 +159,7 @@ function _histogram(binning::AbstractBinningKDE,
     return _histogram(binning, data, edges′; weights)
 end
 function _histogram(binning::AbstractBinningKDE,
-                    data::AbstractVector{<:Tuple{Vararg{Any,N}}},
+                    data::Tuple{Vararg{AbstractVector,N}},
                     edges::Union{<:HistEdge,<:AbstractRange}...;
                     weights::Union{Nothing,<:AbstractVector} = nothing
                    ) where {N}

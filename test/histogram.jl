@@ -96,11 +96,10 @@ end
     hist = similar(first(centers), (axes(c, 1) for c in centers)...)
 
     # values for dims 2 and up
-    coord_rest = ((0.0 for _ in 2:N)...,)
-    index_rest = ((1 for _ in 2:N)...,)
+    coord_rest = (([0.0] for _ in 2:N)...,)
 
     # nothing weights are interpreted as unity weight
-    x1 = [(0.33, coord_rest...)]
+    x1 = ([0.33], coord_rest...)
     fill!(hist, 0)
     _histogram!(style, hist, edges′, x1, nothing)
     @test sum(hist) * step(edges[1])^N == 1.0
@@ -109,7 +108,7 @@ end
     @test hist == _histogram(style, x1, edges′; weights = [1])
 
     # out-of-bounds elements are not binned
-    x0 = [(-1.0, (0.0 for _ in 1:N-1)...,)]
+    x0 = ([-1.0], ([0.0] for _ in 1:N-1)...)
     fill!(hist, 0)
     _histogram!(style, hist, edges′, x0, nothing)
     @test sum(hist) == 0.0
@@ -138,7 +137,7 @@ end
 
         # make data unitful, with mixed unit axes
         units = (u"m", u"s^-2", u"kg")[1:N]
-        vals = [x .* units for x in x1]
+        vals = map((x, u) -> x .* u, x1, units)
         uedges = map((e, u) -> e .* u, edges, units)
         uhist = zeros(_hist_eltype(uedges), axes(hist)...)
         # verify that the function accepts unitful quantities
@@ -153,6 +152,23 @@ end
         @test eltype(uhist3) == eltype(uhist)
         @test uhist3 == uhist
     end
+
+    @testset "Non-bitstype numbers" begin
+        edges = (big"0.5":1:big"5.5", 0.5:1:5.5, 0.5f0:1:5.5f0)
+
+        coords = ([big"1.0"], [2.0], [3f0])
+        H1 = _histogram(HB, coords[1:1], edges[1:1]...)
+        @test eltype(H1) == BigFloat
+        @test H1[1] == 1 && sum(H1) == 1.0
+
+        H2 = _histogram(HB, coords[1:2], edges[1:2]...)
+        @test eltype(H2) == BigFloat
+        @test H2[1,2] == 1 && sum(H2) == 1.0
+
+        H3 = _histogram(HB, coords[1:3], edges[1:3]...)
+        @test eltype(H3) == BigFloat
+        @test H3[1,2,3] == 1 && sum(H3) == 1.0
+    end
 end
 
 @testset "Weighting" begin
@@ -160,7 +176,6 @@ end
 
     N = 100
     rv = randn(N)
-    data = reinterpret(reshape, Tuple{Float64}, rv)
 
     Nlen = Float64(N)
     Npos = Float64(count(>=(0), rv))
@@ -179,9 +194,9 @@ end
         fill!(H0, 0); fill!(H1, 0); fill!(H2, 0)
 
         # binning uses the sum of weights (not effective sample size as KDE does)
-        wsum0 = _histogram!(style, H0, edges, data, nothing)
-        wsum1 = _histogram!(style, H1, edges, data, weight1)
-        wsum2 = _histogram!(style, H2, edges, data, weight2)
+        wsum0 = _histogram!(style, H0, edges, (rv,), nothing)
+        wsum1 = _histogram!(style, H1, edges, (rv,), weight1)
+        wsum2 = _histogram!(style, H2, edges, (rv,), weight2)
         @test wsum0 == N
         @test wsum1 == N
         @test wsum2 == 2N
@@ -194,9 +209,9 @@ end
         # binning weights respect limits and ignore out-of-bounds entries
         fill!(H0, 0); fill!(H1, 0); fill!(H2, 0)
 
-        wsum0 = _histogram!(style, @view(H1[1:end÷2]), edges_pos, data, weight1)
-        wsum1 = _histogram!(style, @view(H1[1:end÷2]), edges_pos, data, weight1)
-        wsum2 = _histogram!(style, @view(H2[1:end÷2]), edges_pos, data, weight2)
+        wsum0 = _histogram!(style, @view(H1[1:end÷2]), edges_pos, (rv,), weight1)
+        wsum1 = _histogram!(style, @view(H1[1:end÷2]), edges_pos, (rv,), weight1)
+        wsum2 = _histogram!(style, @view(H2[1:end÷2]), edges_pos, (rv,), weight2)
         @test wsum0 == Npos
         @test wsum1 == Npos
         @test wsum2 == 2Npos
@@ -212,13 +227,11 @@ end
     l32 = LinRange(r32[1], r32[end], length(r32))
 
     @testset "$r" for r in (r64, l64, r32, l32)
-        v = reinterpret(reshape, Tuple{eltype(r)}, Vector(r))
-
         edges = (HistEdge(r),)
         # For regular histogram binning, using the bin edges as values must result in a uniform
         # distribution except the last bin which is doubled (due to being closed on the right).
         H = zeros(eltype(r), length(r) - 1)
-        ν = _histogram!(HB, H, edges, v, nothing)
+        ν = _histogram!(HB, H, edges, (r,), nothing)
         @test ν == length(r)
         @test_broken all(@view(H[1:end-1]) .== H[1])
         @test H[end] == 2H[1]
@@ -228,7 +241,7 @@ end
         # neighbors. (The remaining interior bins give up half of their weight but
         # simultaneously gain from a neighbor, so they are unchanged.)
         fill!(H, 0.0)
-        ν = _histogram!(LB, H, edges, v, nothing)
+        ν = _histogram!(LB, H, edges, (r,), nothing)
         @test ν == length(r)
         @test all(@view(H[2:end-1]) .≈ H[2])
         @test H[end] ≈ H[1]
@@ -249,7 +262,7 @@ end
 
     H = zeros(nbins)
     edges = (HistEdge(lo, hi, nbins),)
-    _histogram!(LB, H, edges, [(x,)], nothing)
+    _histogram!(LB, H, edges, ([x],), nothing)
     @test all(iszero, @view H[1:end-1])
     @test H[end] > 0.0
 end
