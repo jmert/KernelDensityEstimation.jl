@@ -90,10 +90,10 @@ bandwidth-dependent biases of the order ``\\mathcal{O}(h^{2p})``.
 function estimator_order end
 
 """
-    lo, hi, boundary = bounds(data::AbstractVector{T}, spec) where {T}
+    lo, hi, bc = bounds(x, spec)
 
-Determine the appropriate interval, from `lo` to `hi` with boundary style `boundary`, for
-the density estimate, given the data vector `data` and KDE argument `bounds`.
+Determine the appropriate interval from `lo` to `hi` with boundary condition `bc` given
+the data vector `x` and bounds specification `spec`.
 
 Packages may specialize this method on the `spec` argument to modify the behavior of
 the interval and boundary refinement for new argument types.
@@ -113,16 +113,6 @@ the request KDE method for use in filtering and/or correctly interpreting the da
 necessary.
 """
 function bandwidth end
-
-"""
-    B = boundary(spec)
-
-Convert the specification `spec` to a boundary style `B`.
-
-Packages may specialize this method on the `spec` argument to modify the behavior of
-the boundary inference for new argument types.
-"""
-function boundary end
 
 """
 ```julia
@@ -158,21 +148,12 @@ baremodule Boundary
 end
 using .Boundary
 
-boundary(spec::Boundary.T) = spec
-
-"""
-    B = boundary(spec::Symbol)
-
-Converts the following symbols to its corresponding boundary style:
-- `:open` -> [`Open`](@ref Boundary)
-- `:closed` -> [`Closed`](@ref Boundary)
-- `:closedleft` and `:openright` -> [`ClosedLeft`](@ref Boundary)
-- `:closedright` and `:openleft` -> [`ClosedRight`](@ref Boundary)
-"""
-boundary(spec::Symbol) = spec === :open ? Open :
-                         spec === :closed ? Closed :
-                         spec === :closedleft ? ClosedLeft :
-                         spec === :openright ? ClosedLeft :
-                         spec === :closedright ? ClosedRight :
-                         spec === :openleft ? ClosedRight :
-                         throw(ArgumentError("Unknown boundary option: $spec"))
+function Base.convert(::Type{<:Boundary.T}, spec::Symbol)
+    spec === :open        && return Open
+    spec === :closed      && return Closed
+    spec === :closedleft  && return ClosedLeft
+    spec === :openright   && return ClosedLeft
+    spec === :closedright && return ClosedRight
+    spec === :openleft    && return ClosedRight
+    throw(ArgumentError("Unknown boundary condition: $spec"))
+end

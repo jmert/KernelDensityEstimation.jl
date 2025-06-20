@@ -4,9 +4,13 @@ using DocumenterInterLinks
 using KernelDensityEstimation
 
 doctest = "--fix"  in ARGS ? :fix :
-          "--test" in ARGS ? true : false
+          "--test" in ARGS ? true :
+          get(ENV, "CI", "false") == "true"
 
-DocMeta.setdocmeta!(KernelDensityEstimation, :DocTestSetup, :(using KernelDensityEstimation); recursive=true)
+DocMeta.setdocmeta!(KernelDensityEstimation, :DocTestSetup, quote
+                        using KernelDensityEstimation
+                        const KDE = KernelDensityEstimation
+                    end; recursive=true)
 
 bib = CitationBibliography(joinpath(@__DIR__, "src", "refs.bib");
                            style = :numeric)

@@ -6,27 +6,80 @@ import Logging: @warn
 end
 
 
-"""
-    B = boundary((lo, hi)::Tuple{<:Real,<:Real})
-
-Infers the appropriate boundary condition `B` given the lower and upper bounds of the
-domain. A finite value corresponds to a closed boundary, whereas an appropriately-signed
-infinity implies and open boundary. Having either the wrong sign (such as `hi == -Inf`)
-or a NaN value is an error.
-"""
-function boundary((lo, hi)::Tuple{<:Number,<:Number})
-    if isfinite(lo) && isfinite(hi)
-        return Closed
-    elseif isfinite(lo) && (isinf(hi) && hi > zero(hi))
-        return ClosedLeft
-    elseif isfinite(hi) && (isinf(lo) && lo < zero(lo))
-        return ClosedRight
-    elseif (isinf(lo) && lo < zero(lo)) && (isinf(hi) && hi > zero(hi))
-        return Open
-    else
-        throw(ArgumentError("Could not infer boundary for `lo = $lo`, `hi = $hi`"))
-    end
+function bounds(::Any, spec::Any)
+    throw(ArgumentError("Unknown how to interpret bounds `$spec` as interval and boundary condition"))
 end
+
+"""
+   lo, hi, bc = bounds(x, (lo, hi, bc))
+
+Refine the interval `lo` to `hi` and boundary condition `bc` to replace values of `nothing`
+with appropriate values based on the data in vector `x`.
+
+- If either `lo` or `hi` are nothing, the extrema are used to refine to finite bounds.
+
+- If `boundary` is nothing, the values of `lo` and hi` are used to infer the boundary
+  conditions — a finite value corresponds to a closed boundary condition, whereas an
+  appropriately-signed infinity implies an open boundary.
+
+## Examples
+```jldoctest; setup = :(import .KDE: bounds; using .KDE.Boundary)
+julia> bounds(-1:0.1:1, (nothing, nothing, :closed))
+(-1.0, 1.0, Closed)
+
+julia> bounds(-1:0.1:1, (0, nothing, :closedleft))
+(0.0, 1.0, ClosedLeft)
+
+julia> bounds(-1:0.1:1, (-Inf, Inf, nothing))
+(-1.0, 1.0, Open)
+```
+"""
+function bounds(x::AbstractVector{T},
+                (lo, hi, boundary)::Tuple{
+                    Union{<:Number,Nothing},
+                    Union{<:Number,Nothing},
+                    Union{Boundary.T,Symbol,Nothing}}
+               ) where {T}
+    isvalid(v, neg) = isnothing(v) || isfinite(v) || (isinf(v) && signbit(v) == neg)
+    isvalid(lo, true)  || throw(ArgumentError("Invalid lower bound: `lo = $lo`"))
+    isvalid(hi, false) || throw(ArgumentError("Invalid upper bound: `hi = $hi`"))
+
+    # infer the boundary condition if it is not explicitly given
+    if isnothing(boundary)
+        if isnothing(lo) || isnothing(hi)
+            throw(ArgumentError("Cannot infer boundary conditions with unspecified limits `lo = $lo`, `hi = $hi`"))
+        end
+        bc = (isfinite(lo) && isfinite(hi)) ? Closed :
+             (isfinite(lo) && isinf(hi)) ? ClosedLeft :
+             (isfinite(hi) && isinf(lo)) ? ClosedRight :
+             Open
+    else
+        bc = convert(Boundary.T, boundary)
+    end
+
+    # now normalize ±∞ as `nothing` to infer limits from the data
+    lo = !isnothing(lo) && isinf(lo) ? nothing : lo
+    hi = !isnothing(hi) && isinf(hi) ? nothing : hi
+
+    # refine missing values of lo, hi where necessary
+    if isnothing(lo) || isnothing(hi)
+        a = b = first(x)
+        for xi in x
+            a = min(a, xi)
+            b = max(b, xi)
+        end
+        # refine limits where necessary
+        lo′ = isnothing(lo) ? a : T(lo)
+        hi′ = isnothing(hi) ? b : T(hi)
+    else
+        lo′, hi′ = T(lo), T(hi)
+    end
+    return (lo′, hi′, bc)::Tuple{T,T,Boundary.T}
+end
+
+# default boundary condition is open in kde(), so interpret a pair of limits as an open
+# boundary condition
+bounds(data::AbstractVector, (lo, hi)::Tuple{<:Number,<:Number}) = bounds(data, (lo, hi, Open))
 
 
 """
@@ -97,7 +150,7 @@ entrypoint parameters and some internal state variables.
 
 - `boundary::`[`Boundary.T`](@ref Boundary):
   The concrete boundary condition assumed in the density estimate after calling
-  [`boundary()`](@ref) with the value of the `.bounds` field.
+  [`bounds()`](@ref) with the value of the `.bounds` field.
   Defaults to [`Open`](@ref Boundary).
 
 - `neffective::T`:
@@ -196,36 +249,6 @@ Base.iterate(estim::UnivariateKDE) = iterate(estim, Val(:x))
 Base.iterate(estim::UnivariateKDE, ::Val{:x}) = (estim.x, Val(:f))
 Base.iterate(estim::UnivariateKDE, ::Val{:f}) = (estim.f, nothing)
 Base.iterate(::UnivariateKDE, ::Any) = nothing
-
-function _extrema(data::AbstractVector{T}, lo, hi) where {T}
-    !isnothing(lo) && !isnothing(hi) && return (T(lo), T(hi))::Tuple{T,T}
-    a = b = first(data)
-    for x in data
-        a = min(a, x)
-        b = max(b, x)
-    end
-    return (isnothing(lo) ? a : T(lo),
-            isnothing(hi) ? b : T(hi))::Tuple{T,T}
-end
-
-"""
-   lo, hi, boundary = bounds(data::AbstractVector{T}, (lo, hi, boundary)) where {T}
-
-Determine the appropriate span from `lo` to `hi` for the density estimate, given the data
-vector `data` and possible explicit known boundaries as arguments. The extrema are used
-as necessary to refine a `nothing` input bound.
-"""
-function bounds(data::AbstractVector{T},
-                spec::Tuple{Union{<:Number,Nothing},
-                            Union{<:Number,Nothing},
-                            Union{Boundary.T,Symbol}}
-               ) where {T}
-    lo, hi, B = spec
-    return (_extrema(data, lo, hi)..., boundary(B))
-end
-
-bounds(data, spec::Tuple{Union{<:Number,Nothing},
-                         Union{<:Number,Nothing}}) = bounds(data, (spec..., :open))
 
 
 @noinline function _warn_bounds_override(bounds, lo, hi)

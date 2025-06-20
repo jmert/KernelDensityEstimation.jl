@@ -11,6 +11,17 @@ Depth = 2:2
 
 ---
 
+## v0.8.0 — Unreleased
+
+- Various changes to the interfaces and type definitions have been made to allow for future support of bivariate (and
+  possibly multivariate) density estimates.
+
+    - The `boundary` function has been removed, with all of its functionality subsumed by the
+      [`bounds`](@ref) function, which has also impacted the built-in definitions and behaviors of the `bounds`
+      methods.
+
+---
+
 ## v0.7.0 — 2025 Jun 08
 
 - A new `weights` keyword argument has been added to the [`kde`](@ref) function to support weighted data sets.
@@ -66,7 +77,7 @@ Depth = 2:2
 
 ## v0.4.0 — 2024 Sep 09
 
-- Add an interface method [`boundary`](@ref) which can be overloaded to implement mechanisms for automatically
+- Add an interface method `boundary` which can be overloaded to implement mechanisms for automatically
   determining appropriate boundary conditions.
   - The two built-in methods are to convert from symbols to enum (e.g. `:open` to [`Open`](@ref Boundary)) and to infer
     the boundary conditions from a 2-tuple of finite/infinite real values.

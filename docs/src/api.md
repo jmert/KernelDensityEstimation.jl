@@ -55,7 +55,6 @@ AbstractKDE
 AbstractKDEInfo
 UnivariateKDEInfo
 AbstractKDEMethod
-boundary
 bounds
 estimate
 estimator_order

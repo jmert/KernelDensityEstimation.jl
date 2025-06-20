@@ -50,23 +50,22 @@ rv_norm_long = rv_norm_σ .* randn(Random.seed!(Random.default_rng(), 1234), Int
 end
 
 @testset "Bounds Handling" begin
-    # direct boundary specifications
-    @test KDE.boundary(KDE.Open)        == KDE.boundary(:open)        == KDE.Open
-    @test KDE.boundary(KDE.Closed)      == KDE.boundary(:closed)      == KDE.Closed
-    @test KDE.boundary(KDE.ClosedLeft)  == KDE.boundary(:closedleft)  == KDE.ClosedLeft
-    @test KDE.boundary(KDE.ClosedRight) == KDE.boundary(:closedright) == KDE.ClosedRight
-    @test KDE.boundary(KDE.OpenLeft)    == KDE.ClosedRight
-    @test KDE.boundary(KDE.OpenRight)   == KDE.ClosedLeft
-    @test_throws(ArgumentError(match"Unknown boundary option: .*?"r), KDE.boundary(:something))
+    # conversion from symbols
+    @test convert(KDE.Boundary.T, :open)        == KDE.Open
+    @test convert(KDE.Boundary.T, :closed)      == KDE.Closed
+    @test convert(KDE.Boundary.T, :closedleft)  == KDE.ClosedLeft
+    @test convert(KDE.Boundary.T, :closedright) == KDE.ClosedRight
+    @test_throws(ArgumentError(match"Unknown boundary condition: .*?"r),
+                 convert(KDE.Boundary.T, :something))
 
     # inferring boundary specifications
-    @test KDE.boundary((-Inf, Inf)) == KDE.Open
-    @test KDE.boundary((0.0, Inf))  == KDE.ClosedLeft
-    @test KDE.boundary((-Inf, 0))   == KDE.ClosedRight
-    @test KDE.boundary((0, 1))      == KDE.Closed
+    @test KDE.bounds([1.0, 2.0], (-Inf, Inf, nothing)) === (1.0, 2.0, KDE.Open)
+    @test KDE.bounds([1.0, 2.0], (0.0, Inf, nothing))  === (0.0, 2.0, KDE.ClosedLeft)
+    @test KDE.bounds([1.0, 2.0], (-Inf, 0, nothing))   === (1.0, 0.0, KDE.ClosedRight)
+    @test KDE.bounds([1.0, 2.0], (0, 1, nothing))      === (0.0, 1.0, KDE.Closed)
     for bnds in [(NaN, 1.0), (Inf, 1.0), (0.0, NaN), (0.0, -Inf)]
-        @test_throws(ArgumentError(match"Could not infer boundary for `lo = .*?`, `hi = .*?`"r),
-                     KDE.boundary(bnds))
+        @test_throws(ArgumentError(match"Invalid [^\s]+ bound: `(hi|lo) = .*?`"r),
+                     KDE.bounds(Float64[], (bnds..., nothing)))
     end
 
 
