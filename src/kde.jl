@@ -79,7 +79,7 @@ end
 
 # default boundary condition is open in kde(), so interpret a pair of limits as an open
 # boundary condition
-bounds(data::AbstractVector, (lo, hi)::Tuple{<:Number,<:Number}) = bounds(data, (lo, hi, Open))
+bounds(data::AbstractVector, (lo, hi)::NTuple{2, Union{<:Number,Nothing}}) = bounds(data, (lo, hi, Open))
 
 
 """
@@ -251,12 +251,6 @@ Base.iterate(estim::UnivariateKDE, ::Val{:f}) = (estim.f, nothing)
 Base.iterate(::UnivariateKDE, ::Any) = nothing
 
 
-@noinline function _warn_bounds_override(bounds, lo, hi)
-    @nospecialize
-    @warn "Keyword `bounds` is overriding non-nothing `lo` and/or `hi`" bounds=bounds lo=lo hi=hi
-    return nothing
-end
-
 @noinline function _warn_unused(kwargs)
     @nospecialize
     @warn "Unused keyword argument(s)" kwargs=kwargs
@@ -267,10 +261,7 @@ end
     data, weights, details = init(
             method::K, data::AbstractVector{T},
             weights::Union{Nothing,<:AbstractVector} = nothing;
-            lo::Union{Nothing,<:Number} = nothing,
-            hi::Union{Nothing,<:Number} = nothing,
-            boundary::Union{Symbol,Boundary.T} = :open,
-            bounds = nothing,
+            bounds = (nothing, nothing, Open),
             bandwidth::Union{<:Number,<:AbstractBandwidthEstimator} = ISJBandwidth(),
             bwratio::Real = 1,
             nbins::Union{Nothing,<:Integer} = nothing,
@@ -280,26 +271,16 @@ end
 function init(method::K,
               data::AbstractVector{T},
               weights::Union{Nothing,<:AbstractVector} = nothing;
-              lo::Union{Nothing,<:Number} = nothing,
-              hi::Union{Nothing,<:Number} = nothing,
-              boundary::Union{Symbol,Boundary.T} = :open,
-              bounds = nothing,
+              bounds = (nothing, nothing, Open),
               bandwidth::Union{<:Number,<:AbstractBandwidthEstimator} = ISJBandwidth(),
               bwratio::Real = 8,
               nbins::Union{Nothing,<:Integer} = nothing,
               kwargs...) where {K<:AbstractKDEMethod, T}
-    @nospecialize method
-    options = UnivariateKDEInfo{T}(; method)
-
-    # Handle the option to provide either a single bounds argument or the triple of lo, hi,
-    # and boundary
-    if !isnothing(bounds) && (!isnothing(lo) || !isnothing(hi))
-        invokelatest(_warn_bounds_override, bounds, lo, hi)::Nothing
-    end
-    options.bounds = bounds′ = isnothing(bounds) ? (lo, hi, boundary) : bounds
+    @nospecialize method bounds
+    options = UnivariateKDEInfo{T}(; method, bounds)
 
     # Convert the input bounds to the required canonical representation
-    lo′, hi′, boundary′ = KernelDensityEstimation.bounds(data, bounds′)::Tuple{T,T,Boundary.T}
+    lo′, hi′, boundary′ = KernelDensityEstimation.bounds(data, bounds)::Tuple{T,T,Boundary.T}
     options.boundary = boundary′
     options.interval = (lo′, hi′)
 
@@ -591,6 +572,13 @@ function estimate(method::MultiplicativeBiasKDE, binned::UnivariateKDE{T}, info:
 end
 
 
+@noinline function _warn_bounds_override(bounds, lo, hi, boundary)
+    @nospecialize
+    @warn("Keyword `bounds` is overriding non-nothing `lo`, `hi`, and/or `boundary`.",
+          bounds = bounds, lo = lo, hi = hi, boundary = boundary)
+    return nothing
+end
+
 """
     estim = kde(data;
                 weights = nothing, method = MultiplicativeBiasKDE(),
@@ -630,11 +618,25 @@ no explicit bandwidth is given.
 """
 function kde(data;
              weights = nothing, method::AbstractKDEMethod = MultiplicativeBiasKDE(),
-             lo = nothing, hi = nothing, boundary = :open, bounds = nothing,
+             lo = nothing, hi = nothing, boundary = nothing, bounds = nothing,
              bandwidth = ISJBandwidth(), bwratio = 8, nbins = nothing,
             )
+    # Warn if the bounds argument is going to override any values provided in lo, hi, or
+    # boundary
+    if !isnothing(bounds) && (!isnothing(lo) || !isnothing(hi) || !isnothing(boundary))
+        invokelatest(_warn_bounds_override, bounds, lo, hi, boundary)
+        lo = hi = boundary = nothing
+    end
+
+    # Consolidate high-level keywords for (; lo, hi, boundary) into the lower-level
+    # interface's (; bounds) keyword.
+    if isnothing(bounds)
+        bc = isnothing(boundary) ? Open : boundary
+        bounds = (lo, hi, bc)
+    end
     estim, _ = estimate(method, data, weights;
-                        lo, hi, boundary, bounds, nbins, bandwidth, bwratio)
+                        bounds, nbins, bandwidth, bwratio)
+
     # The pipeline is not perfectly norm-preserving, so renormalize before returning to
     # the user.
     rdiv!(estim.f, sum(estim.f) * step(estim.x))

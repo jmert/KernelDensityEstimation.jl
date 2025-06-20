@@ -234,7 +234,8 @@ function bandwidth(isj::ISJBandwidth{<:Any}, v::AbstractVector{T},
     # binning that the ISJ algorithm can iterate.
     # We need a histogram, so just reuse the binning base case of the estimator pipeline
     # to provide what we need.
-    (x, f), info = estimate(isj.binning, v, weights; lo, hi, boundary, isj.bwratio,
+    bounds = (lo, hi, boundary)
+    (x, f), info = estimate(isj.binning, v, weights; bounds, isj.bwratio,
                             bandwidth = SilvermanBandwidth())
 
     neff = info.neffective
