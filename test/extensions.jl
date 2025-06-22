@@ -52,7 +52,7 @@ end
     # stairs has special behavior; check that the converted data correctly closes the
     # histogram
     fig, ax, pl = stairs(K)
-    y = only(pl.converted)[]  # have to reach into a non-public field??
+    y = pl[1][]  # semi-nonpublic interface...
     @test y[1] ≈ [0.0, 0.0] atol=eps()
     @test y[end] ≈ [1.0, 0.0] atol=eps()
     @test y[end][1] == y[end-1][1]
