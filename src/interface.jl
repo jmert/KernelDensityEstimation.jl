@@ -12,13 +12,13 @@ Base.ndims(::Type{<:AbstractKDE{T,N}}) where {T,N} = N
 
 
 """
-    AbstractKDEInfo{T}
+    AbstractKDEInfo{T,N}
 
 Abstract supertype of auxiliary information used during kernel density estimation.
 
 See also [`UnivariateKDEInfo`](@ref)
 """
-abstract type AbstractKDEInfo{T} end
+abstract type AbstractKDEInfo{T,N} end
 
 """
     AbstractKDEMethod

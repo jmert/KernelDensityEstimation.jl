@@ -53,9 +53,12 @@ Depth = 2:2
       In contrast, the element type of the density array is unique, so this is the natural choice to use in the
       supertype relationship.
 
-     - An **experimental** [`MultivariateKDE`](@ref) type has been added to support higher dimensional density
-       estimation.
-       [`UnivariateKDE`](@ref) and [`BivariateKDE`](@ref) are type aliases for the 1- and 2-dimensional cases.
+    - [`UnivariateKDEInfo`](@ref) has been redefined as an alias of the more generic [`MultivariateKDEInfo`](@ref)
+      struct.
+
+    - An **experimental** [`MultivariateKDE`](@ref) type has been added to support higher dimensional density
+      estimation.
+      [`UnivariateKDE`](@ref) and [`BivariateKDE`](@ref) are type aliases for the 1- and 2-dimensional cases.
 
 ---
 

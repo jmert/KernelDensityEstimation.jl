@@ -55,7 +55,9 @@ bandwidth
 ```@docs
 AbstractKDE
 AbstractKDEInfo
+MultivariateKDEInfo
 UnivariateKDEInfo
+BivariateKDEInfo
 AbstractKDEMethod
 bounds
 estimate

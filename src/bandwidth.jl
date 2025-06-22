@@ -317,15 +317,17 @@ function bandwidth(isj::ISJBandwidth{<:Any}, v::AbstractVector{T},
     (x, f), info = estimate(isj.binning, v, weights; bounds, isj.bwratio,
                             bandwidth = SilvermanBandwidth())
 
+    bandwidth = info.bandwidth[1]
     neff = info.neffective
     Δx = step(x)
+    Δz = Δx / oneunit(Δx)
     # The core of the ISJ algorithm works in a normalized unit system where Δx = 1.
     # Two things of note:
     #
     #   1. We initialize the fixed-point algorithm with the Silverman bandwidth, but
     #      scaled correctly for the change in axis. Then afterwards, the ISJ bandwidth
     #      will need to be scaled back to the original axis, e.g. h → Δx × h
-    h₀ = info.bandwidth / Δx
+    h₀ = bandwidth / Δz
     #   2. Via the Fourier scaling theorem, f(x / Δx) ⇔ Δx × f̂(k), we must scale the DCT
     #      by the grid step size.
     f̂ = similar(f, _unitless(T))
@@ -333,7 +335,7 @@ function bandwidth(isj::ISJBandwidth{<:Any}, v::AbstractVector{T},
         @inbounds f̂[I] = f[I] * oneunit(T)
     end
     FFTW.r2r!(f̂, FFTW.REDFT10)
-    rmul!(f̂, Δx / oneunit(T))
+    rmul!(f̂, Δz)
 
     # Now we simply solve for the fixed-point solution:
     h = Δx * ISJ.estimate(isj.niter, neff, f̂, h₀)
@@ -341,7 +343,7 @@ function bandwidth(isj::ISJBandwidth{<:Any}, v::AbstractVector{T},
     # Check that the fixed-point solver converged to a positive value
     if isnan(h) || h < zero(T)
         if isj.fallback
-            h = info.bandwidth  # fallback to the Silverman estimate
+            h = bandwidth * oneunit(Δx)  # fallback to the Silverman estimate
         else
             throw(ErrorException("ISJ estimator failed to converge. More data is needed."))
         end

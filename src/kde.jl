@@ -98,15 +98,15 @@ struct MultivariateKDE{T, N, R<:Tuple{Vararg{AbstractRange,N}}, V<:AbstractArray
     density::V
 end
 
-function _mvtype_eltypes(eltypes::NTuple{N,DataType}) where {N}
+multivariate_type_from_axis_eltypes(eltypes::Type...) = _mvtype_eltypes(eltypes)
+function _mvtype_eltypes(eltypes::P) where {N, P<:NTuple{N,Type}}
     T = _invunit(typeof(mapreduce(oneunit, *, eltypes)))
     R = map(eltypes) do Ti
-        typeof(range(zero(Ti), zero(Ti), length = 1))
+        typeof(zero(Ti):oneunit(Ti):zero(Ti))
     end
     V = Array{T,N}
     return MultivariateKDE{T,N,Tuple{R...},V}
 end
-multivariate_type_from_axis_eltypes(eltypes::Type...) = _mvtype_eltypes(eltypes)
 
 function _show_mvtype(io, K::MultivariateKDE{T, N}) where {T, N}
     if isdefined(Base, :ispublic)
@@ -233,12 +233,17 @@ Base.iterate(::BivariateKDE, ::Any) = nothing
 
 
 """
-    UnivariateKDEInfo{T} <: AbstractKDEInfo{T}
+    MultivariateKDEInfo{U,N} <: AbstractKDEInfo{U,N}
 
 Information about the density estimation process, providing insight into both the
 entrypoint parameters and some internal state variables.
 
 # Extended help
+
+## Type parameters
+
+- `U`: A unitless element type compatible with the density estimate.
+- `N`: The dimensionality of the density estimate.
 
 ## Fields
 
@@ -248,104 +253,170 @@ entrypoint parameters and some internal state variables.
 - `bounds::Any`:
   The bounds specification of the estimate as passed to [`init()`](@ref), prior to making
   it concrete via calling [`bounds()`](@ref).
-  Defaults to `nothing`.
 
-- `interval::Tuple{T,T}`:
-  The concrete interval of the density estimate after calling [`bounds()`](@ref) with the
-  value of the `.bounds` field but before adding requisite padding for open boundary
-  conditions.
-  Defaults to `(zero(T), zero(T))`.
+- `domain::Union{Nothing, Tuple{Vararg{Tuple{Ei,Ei,Boundary.T} where Ei,N}}}`:
+  A tuple of the concrete range and boundary conditions of the density estimate axes after
+  calling [`bounds()`](@ref) with the value of the `.bounds` field **before** adding any
+  requisite padding for open boundary conditions.
 
-- `boundary::`[`Boundary.T`](@ref Boundary):
-  The concrete boundary condition assumed in the density estimate after calling
-  [`bounds()`](@ref) with the value of the `.bounds` field.
-  Defaults to [`Open`](@ref Boundary).
+- `bwratio::Union{Nothing, NTuple{N,U}}`:
+  The ratio between the bandwidth and the width of a histogram bin for each axis, used only
+  when the number of bins is not explicitly provided.
 
-- `neffective::T`:
-  Kish's effective sample size of the data, which equals the length of the original data
-  vector for uniformly weighted samples.
-  Defaults to `NaN`.
+- `nbins::Union{Nothing,NTuple{N,Int}}`:
+  The number of requested bins along each axis.
+  If `nothing`, then the number of bins is calculated using the padded domain of the
+  density estimate, the bandwidth, and the ratio `.bwratio`.
+
+- `neffective::U`:
+  Kish's effective sample size of the data, which equals the number of samples for
+  uniformly weighted data.
 
 - `bandwidth_alg::Union{Nothing,`[`AbstractBandwidthEstimator`](@ref)`}`:
   Algorithm used to estimate an appropriate bandwidth, if a concrete value was not
   provided to the estimator, otherwise `nothing`.
-  Defaults to `nothing`.
 
-- `bandwidth::T`:
-  The bandwidth of the convolution `kernel`.
-  Defaults to `zero(T)`.
+- `bandwidth::Union{Nothing,<:AbstractMatrix{U}}`:
+  The bandwidth (square root of covariance) of the convolution `kernel`.
 
-- `bwratio::T`:
-  The ratio between the bandwidth and the width of a histogram bin, used only when the
-  number of bins `.nbins` is not explicitly provided.
-  Defaults to `one(T)`.
-
-- `lo::T`:
-  The lower edge of the first bin in the density estimate, after possibly adjusting for
-  an open boundary condition compared to the `.interval` field.
-  Defaults to `zero(T)`.
-
-- `hi::T`:
-  The upper edge of the last bin in the density estimate, after possibly adjusting for
-  an open boundary condition compared to the `.interval` field.
-  Defaults to `zero(T)`.
-
-- `nbins::Int`:
-  The number of bins used in the histogram at the beinning of the density estimatation.
-  Defaults to `-1`.
-
-- `kernel::Union{Nothing,`[`UnivariateKDE`](@ref)`{T}}`:
-  The convolution kernel used to process the density estimate.
-  Defaults to `nothing`.
+- `kernel::Union{Nothing,`[`MultivariateKDE`](@ref)`{U,N}}`:
+  The convolution kernel used to smooth the density estimate.
 """
-Base.@kwdef mutable struct UnivariateKDEInfo{T,R,K<:UnivariateKDE} <: AbstractKDEInfo{T}
+mutable struct MultivariateKDEInfo{U,N,
+                                   D<:Tuple{Vararg{Tuple{Ei,Ei,Boundary.T} where Ei,N}},
+                                   B<:AbstractMatrix{U},
+                                   K<:MultivariateKDE{U,N}
+                                  } <: AbstractKDEInfo{U,N}
     method::AbstractKDEMethod
-    bounds::Any = nothing
-    interval::Tuple{T,T} = (zero(T), zero(T))
-    boundary::Boundary.T = Open
-    neffective::R = R(NaN)
-    bandwidth_alg::Union{Nothing,AbstractBandwidthEstimator} = nothing
-    bandwidth::T = zero(T)
-    bwratio::R = one(R)
-    lo::T = zero(T)
-    hi::T = zero(T)
-    nbins::Int = -1
-    kernel::Union{Nothing,K} = nothing
+    bounds::Any
+    domain::Union{Nothing,D}
+    bwratio::Union{Nothing,NTuple{N,U}}
+    nbins::Union{Nothing,NTuple{N,Int}}
+    neffective::U
+    bandwidth_alg::Union{Nothing,AbstractBandwidthEstimator}
+    bandwidth::Union{Nothing,B}
+    kernel::Union{Nothing,K}
+end
+function MultivariateKDEInfo{U,N,D,B,K}(method::AbstractKDEMethod) where {U,N,D,B,K}
+    return MultivariateKDEInfo{U,N,D,B,K}(
+            method, #=bounds=#nothing, #=domain=#nothing, #=bwratio=#nothing,
+            #=nbins=#nothing, #=neffective=#NaN, #=bandwidth_alg=#nothing,
+            #=bandwidth=#nothing, #=kernel=#nothing)
 end
 
-function UnivariateKDEInfo{T}(; kwargs...) where {T}
-    R = _unitless(T)
-    K = multivariate_type_from_axis_eltypes(R)
-    UnivariateKDEInfo{T,R,K}(; kwargs...)
-end
+multivariateinfo_type_from_axis_eltypes(eltypes::Type...) = _mvtypeinfo_eltypes(eltypes)
 
-function Base.show(io::IO, info::UnivariateKDEInfo{T}) where {T}
-    print(io, UnivariateKDEInfo, '{', T, '}')
-    if get(io, :compact, false)::Bool
-        print(io, "(…)")
-    else
-        first = true
-        print(io, '(')
-        for fld in fieldnames(typeof(info))
-            !first && print(io, ", ")
-            print(io, fld, " = ")
-            show(io, getfield(info, fld))
-            first = false
-        end
-        print(io, ')')
+function _mvtypeinfo_eltypes(eltypes::P) where {N,P<:NTuple{N,Type}}
+    # calculate the combined (unitful) type of the density
+    T = _invunit(typeof(mapreduce(oneunit, *, eltypes)))
+    # and then use that to get a common unitless type
+    U = _unitless(T)
+    # domains are axis-dependent
+    D = map(eltypes) do Ei
+        Tuple{Ei, Ei, Boundary.T}
+    end
+    # the bandwidth matrix and kernel are unitless
+    B = Matrix{U}
+    K = multivariate_type_from_axis_eltypes(ntuple(_ -> U, Val(N))...)
+    return MultivariateKDEInfo{U,N,Tuple{D...},B,K}
+end
+@static if VERSION < v"1.8"
+    # For Julia v1.9, the above definition infers a concrete return type, but it does not
+    # for earlier versions. Specifically, the compiler appears to give up on maintaining
+    # a precise type for `Tuple{D...}` (where `D <: Tuple`).
+    #
+    # To ensure type stability for the most common cases, add special-case definitions for
+    # the univariate and bivariate cases.
+
+    function _mvtypeinfo_eltypes((E1,)::Tuple{Type})
+        T = _invunit(E1)
+        U = _unitless(T)
+        D = Tuple{Tuple{E1, E1, Boundary.T}}
+        B = Matrix{U}
+        K = multivariate_type_from_axis_eltypes(U)
+        return MultivariateKDEInfo{U,1,D,B,K}
+    end
+    function _mvtypeinfo_eltypes((E1, E2)::Tuple{Type, Type})
+        T = _invunit(typeof(oneunit(E1) * oneunit(E2)))
+        U = _unitless(T)
+        D = Tuple{Tuple{E1, E1, Boundary.T}, Tuple{E2, E2, Boundary.T}}
+        B = Matrix{U}
+        K = multivariate_type_from_axis_eltypes(U, U)
+        return MultivariateKDEInfo{U,2,D,B,K}
     end
 end
 
-let wd = maximum(map(length ∘ string, fieldnames(UnivariateKDEInfo)))
-    function Base.show(io::IO, ::MIME"text/plain", info::UnivariateKDEInfo{T}) where {T}
-        print(io, UnivariateKDEInfo, '{', T, '}')
+
+function _show_mvinfotype(io, info::MultivariateKDEInfo{T,N}) where {T,N}
+    if isdefined(Base, :ispublic)
+        print(io, MultivariateKDEInfo, '{', T, ", ", N, '}')
+    else
+        print(io, typeof(info))
+    end
+end
+
+function Base.show(io::IO, info::MultivariateKDEInfo)
+    if get(io, :compact, false)::Bool
+        _show_mvinfotype(io, info)
+        print(io, "(…)")
+    else
+        if get(io, :limit, false)::Bool
+            _show_mvinfotype(io, info)
+            first = true
+            print(io, '(')
+            for fld in fieldnames(typeof(info))
+                !first && print(io, ", ")
+                print(io, fld, " = ")
+                show(io, getfield(info, fld))
+                first = false
+            end
+            print(io, ')')
+        else
+            invoke(show, Tuple{typeof(io), Any}, io, info)
+        end
+    end
+end
+
+let wd = maximum(map(length ∘ string, fieldnames(MultivariateKDEInfo)))
+    function Base.show(io::IO, ::MIME"text/plain", info::MultivariateKDEInfo)
+        _show_mvinfotype(io, info)
         println(io, ':')
 
         for fld in fieldnames(typeof(info))
             print(io, lpad(fld, wd + 2), ": ")
-            show(io, getfield(info, fld))
+            show(io, getproperty(info, fld))
             println(io)
         end
+    end
+end
+
+"""
+    UnivariateKDEInfo{U, D, B, K} = MultivariateKDEInfo{U, 1, D, B, K}
+
+A simplifying alias of a 1-dimensional [`MultivariateKDEInfo`](@ref) structure.
+"""
+const UnivariateKDEInfo{U,D,B,K} = MultivariateKDEInfo{U,1,D,B,K}
+
+function _show_mvinfotype(io, info::UnivariateKDEInfo{U}) where {U}
+    if isdefined(Base, :ispublic)
+        print(io, UnivariateKDEInfo, '{', U, '}')
+    else
+        print(io, typeof(info))
+    end
+end
+
+"""
+    BivariateKDEInfo{U, D, B, K} = MultivariateKDEInfo{U, 1, D, B, K}
+
+A simplifying alias of a 2-dimensional [`MultivariateKDEInfo`](@ref) structure.
+"""
+const BivariateKDEInfo{U,D,B,K} = MultivariateKDEInfo{U,2,D,B,K}
+
+function _show_mvinfotype(io, info::BivariateKDEInfo{U}) where {U}
+    if isdefined(Base, :ispublic)
+        print(io, BivariateKDEInfo, '{', U, '}')
+    else
+        print(io, typeof(info))
     end
 end
 
@@ -362,9 +433,9 @@ end
             method::K, data::AbstractVector{T},
             weights::Union{Nothing,<:AbstractVector} = nothing;
             bounds = (nothing, nothing, Open),
-            bandwidth::Union{<:Number,<:AbstractBandwidthEstimator} = ISJBandwidth(),
             bwratio::Real = 1,
             nbins::Union{Nothing,<:Integer} = nothing,
+            bandwidth::Union{<:Number,<:AbstractBandwidthEstimator} = ISJBandwidth(),
             kwargs...
         ) where {K<:AbstractKDEMethod, T}
 """
@@ -372,17 +443,19 @@ function init(method::K,
               data::AbstractVector{T},
               weights::Union{Nothing,<:AbstractVector} = nothing;
               bounds = (nothing, nothing, Open),
-              bandwidth::Union{<:Number,<:AbstractBandwidthEstimator} = ISJBandwidth(),
               bwratio::Real = 8,
               nbins::Union{Nothing,<:Integer} = nothing,
+              bandwidth::Union{<:Number,<:AbstractBandwidthEstimator} = ISJBandwidth(),
               kwargs...) where {K<:AbstractKDEMethod, T}
     @nospecialize method bounds
-    options = UnivariateKDEInfo{T}(; method, bounds)
+    info = multivariateinfo_type_from_axis_eltypes(T)(method)
+    info.bounds = bounds
 
     # Convert the input bounds to the required canonical representation
-    lo′, hi′, boundary′ = KernelDensityEstimation.bounds(data, bounds)::Tuple{T,T,Boundary.T}
-    options.boundary = boundary′
-    options.interval = (lo′, hi′)
+    domain = KernelDensityEstimation.bounds(data, bounds)::Tuple{T,T,Boundary.T}
+    lo′, hi′, boundary′ = domain
+    info.domain = (domain,)
+    info.nbins = isnothing(nbins) ? nothing : (nbins,)
 
     # Calculate the effective sample size, based on weights and the bounds, using the
     # Kish effective sample size definition:
@@ -401,11 +474,11 @@ function init(method::K,
         wsum += ifelse(keep, w, zero(wsum))
         wsqr += ifelse(keep, w^2, zero(wsqr))
     end
-    options.neffective = neff = wsum^2 / wsqr
+    info.neffective = neff = wsum^2 / wsqr
 
     # Estimate bandwidth from data, as necessary
     if bandwidth isa AbstractBandwidthEstimator
-        options.bandwidth_alg = bandwidth
+        info.bandwidth_alg = bandwidth
         bandwidth′ = KernelDensityEstimation.bandwidth(
                 bandwidth, data, lo′, hi′, boundary′; weights)::T
         m = estimator_order(typeof(method))
@@ -419,32 +492,49 @@ function init(method::K,
     else
         bandwidth′ = convert(T, bandwidth)
     end
-    options.bandwidth = bandwidth′
-    options.bwratio = bwratio′ = oftype(one(T), bwratio)
-
-    # Then expand the bounds if the bound(s) are open
-    lo′ -= (boundary′ == Closed || boundary′ == ClosedLeft) ? zero(T) : 8bandwidth′
-    hi′ += (boundary′ == Closed || boundary′ == ClosedRight) ? zero(T) : 8bandwidth′
-    options.lo = lo′
-    options.hi = hi′
-
-    # Calculate the number of bins to use in the histogram
-    if isnothing(nbins)
-        nbins′ = max(1, round(Int, bwratio′ * (hi′ - lo′) / bandwidth′))
-    else
-        nbins′ = Int(nbins)
-        nbins′ > 0 || throw(ArgumentError("nbins must be a positive integer"))
-    end
-    options.nbins = nbins′
+    info.bandwidth = fill(bandwidth′ / oneunit(T), 1, 1)
+    info.bwratio = (bwratio,)
 
     # Warn if we received any parameters which should have been consumed earlier in
     # the pipeline
     if length(kwargs) > 0
         invokelatest(_warn_unused, kwargs)::Nothing
     end
-    return data, weights, options
+    return data, weights, info
 end
 
+function _domain_to_edgeranges(info::UnivariateKDEInfo)
+    lo, hi, bc = something(info.domain)[1]
+    bw = something(info.bandwidth)[1] * oneunit(lo)
+    bwratio = something(info.bwratio)[1]
+    nbins = !isnothing(info.nbins) ? info.nbins[1] : nothing
+
+    # Expand the bounds if the bound(s) are open
+    lo -= (bc == Closed || bc == ClosedLeft) ? zero(lo) : 8bw
+    hi += (bc == Closed || bc == ClosedRight) ? zero(hi) : 8bw
+
+    # Calculate the number of bins to use in the histogram
+    if isnothing(nbins)
+        nbins′ = max(1, round(Int, bwratio * (hi - lo) / bw))
+    else
+        nbins′ = Int(nbins)
+        nbins′ > 0 || throw(ArgumentError("nbins must be a positive integer"))
+    end
+
+    r = LinRange(lo, hi, nbins′ + 1)
+    return r
+end
+
+function _edgerange_to_centers(edges::AbstractRange)
+    lo, hi = first(edges), last(edges)
+    if lo == hi
+        return range(lo, lo, length = 1)
+    else
+        nbins = length(edges) - 1
+        Δ = (hi - lo) / nbins / 2
+        return range(lo + Δ, hi - Δ, length = nbins)
+    end
+end
 
 function estimate(M::AbstractKDEMethod, data, weights = nothing; kwargs...)
     return estimate(M, init(M, data, weights; kwargs...)...)
@@ -457,16 +547,10 @@ function estimate(method::AbstractBinningKDE,
                   data::AbstractVector{T},
                   weights::Union{Nothing, <:AbstractVector},
                   info::UnivariateKDEInfo) where {T}
-    lo, hi, nbins = info.lo, info.hi, info.nbins
 
-    f = Histogramming._histogram(method, (data,),
-                                 (Histogramming.HistEdge(lo, hi, nbins),); weights)
-    if lo == hi
-        centers = range(lo, hi, length = 1)
-    else
-        edges = range(lo, hi, length = nbins + 1)
-        centers = edges[2:end] .- step(edges) / 2
-    end
+    edges = _domain_to_edgeranges(info)
+    f = Histogramming._histogram(method, (data,), (edges,); weights)
+    centers = _edgerange_to_centers(edges)
     estim = UnivariateKDE(centers, f)
 
     info.kernel = let R = _unitless(T)
@@ -525,7 +609,7 @@ end
 function estimate(::BasicKDE, binned::UnivariateKDE, info::UnivariateKDEInfo)
     x, f = binned
     T = _invunit(eltype(x))
-    bw = info.bandwidth * oneunit(T)
+    bw = something(info.bandwidth)[1]
     Δx = step(x) * oneunit(T)
 
     # make sure the kernel axis is centered on zero
@@ -577,7 +661,7 @@ function estimate(method::LinearBoundaryKDE, binned::UnivariateKDE, info::Univar
     # apply a linear boundary correction
     # see Eqn 12 & 16 of Lewis (2019)
     #   N.B. the denominator of A₀ should have [W₂]⁻¹ instead of W₂
-    kx, K = info.kernel
+    kx, K = something(info.kernel)
     KI = eachindex(K)
     R = eltype(K)
     K̂ = plan_conv(f, K)

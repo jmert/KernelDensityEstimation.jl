@@ -8,7 +8,7 @@ using Unitful
 
 _bounds(; lo = nothing, hi = nothing, bc = :open) = (lo, hi, bc)
 
-edges2centers(r) = r[2:end] .- step(r) / 2
+edges2centers = KDE._edgerange_to_centers
 centers2edges(r) = (Δ = step(r) / 2; range(first(r) - Δ, last(r) + Δ, length = length(r) + 1))
 
 gaussian(x, σ) = exp.(-x .^ 2 ./ 2σ^2) ./ sqrt(2oftype(σ, π) * σ^2)
@@ -39,7 +39,7 @@ end
     ]
     method = KDE.LinearBinning()
 
-    RT = Tuple{Vector{Float64}, Nothing, KDE.UnivariateKDEInfo{Float64,Float64}}
+    RT = Tuple{Vector{Float64}, Nothing, KDE.UnivariateKDEInfo{Float64}}
     @testset "options = $kws" for kws in variations
         @test @inferred(init(method, [1.0]; kws...)) isa RT
     end
@@ -49,12 +49,6 @@ end
     # Unused options that make it down to the option processing step log a warning message
     @test_logs((:warn, "Unused keyword argument(s)"),
                KDE.init(method, [1.0], bandwidth = 1.0, unusedarg=true))
-
-    # Verify that the kernel's type is fully known and inferrable
-    info = KDE.UnivariateKDEInfo{Float32}(; method)
-    info.kernel = KDE.UnivariateKDE(range(0f0, 0f0, length = 1), [1f0])
-    get_kernel(info) = info.kernel
-    @test (@inferred Nothing get_kernel(info)) isa KDE.UnivariateKDE{Float32,<:AbstractRange{Float32},Vector{Float32}}
 end
 
 @testset "Bounds Handling" begin
@@ -84,7 +78,7 @@ end
     # closed boundaries -- histogram cells will span exactly lo/hi input
     x = range(kws.lo, kws.hi, length = kws.nbins + 1)
     k, info = estimate(KDE.HistogramBinning(), v; kws_bc(:closed)...)
-    @test info.boundary === KDE.Closed
+    @test info.domain[1][3] === KDE.Closed
     @test length(k.x) == kws.nbins
     @test step(k.x) == step(x)
     @test centers2edges(k.x) == x
@@ -92,7 +86,7 @@ end
     # open boundaries --- histogram extends to 8x further left/right than lo/hi
     x = range(kws.lo - 8kws.bandwidth, kws.hi + 8kws.bandwidth, length = kws.nbins + 1)
     k, info = estimate(KDE.HistogramBinning(), v; kws_bc(:open)...)
-    @test info.boundary === KDE.Open
+    @test info.domain[1][3] === KDE.Open
     @test length(k.x) == kws.nbins
     @test step(k.x) == step(x)
     @test centers2edges(k.x) == x
@@ -101,23 +95,23 @@ end
     # exact
     x = range(kws.lo, kws.hi + 8kws.bandwidth, length = kws.nbins + 1)
     k, info = estimate(KDE.HistogramBinning(), v; kws_bc(:closedleft)...)
-    @test info.boundary === KDE.ClosedLeft
+    @test info.domain[1][3] === KDE.ClosedLeft
     @test length(k.x) == kws.nbins
     @test step(k.x) == step(x)
     @test centers2edges(k.x) == x
 
     x = range(kws.lo - 8kws.bandwidth, kws.hi, length = kws.nbins + 1)
     k, info = estimate(KDE.HistogramBinning(), v; kws_bc(:closedright)...)
-    @test info.boundary === KDE.ClosedRight
+    @test info.domain[1][3] === KDE.ClosedRight
     @test length(k.x) == kws.nbins
     @test step(k.x) == step(x)
     @test centers2edges(k.x) == x
 
     # test that the half-open aliases work
     k, info = estimate(KDE.HistogramBinning(), v; kws_bc(:openleft)...)
-    @test info.boundary === KDE.ClosedRight
+    @test info.domain[1][3] === KDE.ClosedRight
     k, info = estimate(KDE.HistogramBinning(), v; kws_bc(:openright)...)
-    @test info.boundary === KDE.ClosedLeft
+    @test info.domain[1][3] === KDE.ClosedLeft
 
     # bounds=(lo, hi) is interpreted as bounds=(lo, hi, :open)
     k1, info = estimate(KDE.HistogramBinning(), v; kws_bc(:open)...)
@@ -155,7 +149,7 @@ end
     @test k₁.x == edges2centers(0.0:1.0:5.0)
     @test isapprox(k₁.f .* Δx, h₁)
     @test sum(k₁.f) * Δx ≈ 1.0
-    @test info.bandwidth ≈ b₀
+    @test info.bandwidth[1] ≈ b₀
 
     # prepared with known number of bins, but automatically selected bounds
     k₂, info = estimate(KDE.HistogramBinning(), v₁;
@@ -164,7 +158,7 @@ end
     @test k₂.x == edges2centers(range(0.5, 4.5, length = 5 + 1))
     @test isapprox(k₂.f .* Δx, h₁)
     @test sum(k₂.f) * Δx ≈ 1.0
-    @test info.bandwidth ≈ b₀
+    @test info.bandwidth[1] ≈ b₀
 
     # prepared with unknown number of bins, but known bounds
     k₃, info = estimate(KDE.HistogramBinning(), v₁;
@@ -173,7 +167,7 @@ end
     @test k₃.x == edges2centers(range(0.0, 5.0, length = round(Int, 5 / b₀) + 1))
     @test isapprox(filter(!iszero, k₃.f) .* Δx, h₁)
     @test sum(k₃.f) * Δx ≈ 1.0
-    @test info.bandwidth ≈ b₀
+    @test info.bandwidth[1] ≈ b₀
 
     # prepared with unknown limits and number of bins
     k₄, info = estimate(KDE.HistogramBinning(), v₁;
@@ -181,7 +175,7 @@ end
     Δx = step(k₄.x)
     @test isapprox(filter(!iszero, k₄.f) .* Δx, h₁)
     @test sum(k₄.f) * Δx ≈ 1.0
-    @test info.bandwidth ≈ b₀
+    @test info.bandwidth[1] ≈ b₀
 
     # prepared using an alternative sampling density (compared to previous)
     k₅, info = estimate(KDE.HistogramBinning(), v₁;
@@ -190,30 +184,30 @@ end
     @test step(k₅.x) < step(k₄.x)
     @test isapprox(filter(!iszero, k₅.f) .* Δx, h₁)
     @test sum(k₅.f) * Δx ≈ 1.0
-    @test info.bandwidth ≈ b₀
+    @test info.bandwidth[1] ≈ b₀
 
     # make sure errors do not occur when uniform data is provided
     let (k, info) = estimate(KDE.HistogramBinning(), ones(100);
                              bounds = _bounds(bc=:closed), kws...)
         @test collect(k.x) == [1.0]
-        @test isfinite(info.bandwidth) && !iszero(info.bandwidth)
+        @test isfinite(info.bandwidth[1]) && !iszero(info.bandwidth[1])
         @test step(k.x) == 0.0  # zero-width bin
         @test sum(k.f) == 1.0  # like a Kronecker delta
     end
 
     # make sure the bandwidth argument is converted to the appropriate common type
     _, info = estimate(KDE.HistogramBinning(), v₁; kws...)
-    @test info.bandwidth isa Float64
+    @test eltype(info.bandwidth) === Float64
     _, info = estimate(KDE.HistogramBinning(), v₁; bandwidth = 1)  # explicit but not same type
-    @test info.bandwidth isa Float64
+    @test eltype(info.bandwidth) === Float64
     _, info = estimate(KDE.HistogramBinning(), Float32.(v₁); kws...)
-    @test info.bandwidth isa Float32
+    @test eltype(info.bandwidth) === Float32
     _, info = estimate(KDE.HistogramBinning(), Float32.(v₁); bandwidth = 1)
-    @test info.bandwidth isa Float32
+    @test eltype(info.bandwidth) === Float32
 
 
     expT = Tuple{KDE.UnivariateKDE{Float64,<:AbstractRange{Float64},<:AbstractVector{Float64}},
-                 KDE.UnivariateKDEInfo{Float64,Float64}}
+                 KDE.UnivariateKDEInfo{Float64}}
     @test @inferred(estimate(KDE.HistogramBinning(), [1.0, 2.0]; nbins = 2, kws...)) isa expT
 end
 
@@ -583,7 +577,7 @@ end
     let N = 1_000, σ = rv_norm_σ, v = view(rv_norm_long, 1:N),
         bandwidth = KDE.SilvermanBandwidth(), bounds = (-6σ, 6σ, KDE.Open)
         h₀ = KDE.bandwidth(bandwidth, v, bounds...)
-        h₁ = KDE.init(KDE.MultiplicativeBiasKDE(), v; bandwidth, bounds)[3].bandwidth
+        h₁ = KDE.init(KDE.MultiplicativeBiasKDE(), v; bandwidth, bounds)[3].bandwidth[1]
         @test h₁ / h₀ ≈ N ^ (1//5 - 1//9)
     end
 end  # Bandwidth Estimators
@@ -669,11 +663,14 @@ end
         @test length(shortmsg) < length(limitlongmsg)
         @test length(limitlongmsg) < length(longmsg)
 
-        # Verify the headers appear as expected
-        @test occursin("UnivariateKDEInfo{Float64}", shortmsg)
-        @test occursin("UnivariateKDEInfo{Float64}", longmsg)
-        @test occursin("UnivariateKDEInfo{Float64}", limitlongmsg)
-
+        # Verify the headers appear as expected --- the expected header is the shorter
+        # alias only after the `public` feature was added
+        type_expect = isdefined(Base, :ispublic) ? "UnivariateKDEInfo{Float64}" :
+                                                   "MultivariateKDEInfo{Float64, 1,"
+        @test occursin(type_expect, shortmsg)
+        @test occursin(type_expect, limitlongmsg)
+        fulltype = sprint(show, typeof(info), context = IOContext(buf, :limit => false, :compact => false))
+        @test occursin(fulltype, longmsg)  # full parametric typing
 
         # The three-arg version for text/plain output is more sophisticated
         ioc = IOContext(buf, :displaysize => (50, 120), :limit => true)
@@ -682,7 +679,7 @@ end
         plines = split(strip(pretty), '\n')
         header = popfirst!(plines)
         # heading line contains type info
-        @test endswith(header, "UnivariateKDEInfo{Float64}:")
+        @test occursin(type_expect, header)
         # fields are then properly padded
         alignment = map(l -> findfirst(==(':'), l), plines)
         @test all(==(alignment[1]), alignment)

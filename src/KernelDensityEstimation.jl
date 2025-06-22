@@ -6,7 +6,7 @@ export kde
     @eval $(Expr(:public,
                  # KDE objects
                  :AbstractKDE, :MultivariateKDE, :UnivariateKDE, :BivariateKDE,
-                 :AbstractKDEInfo, :UnivariateKDEInfo,
+                 :AbstractKDEInfo, :MultivariateKDEInfo, :UnivariateKDEInfo, :BivariateKDEInfo,
                  # KDE pipeline
                  :AbstractKDEMethod, :AbstractBinningKDE, :HistogramBinning, :LinearBinning,
                  :BasicKDE, :LinearBoundaryKDE, :MultiplicativeBiasKDE,
