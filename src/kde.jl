@@ -1,4 +1,5 @@
 import FFTW
+import LinearAlgebra: rmul!, rdiv!
 import Logging: @warn
 
 """
@@ -416,6 +417,27 @@ function estimate(method::AbstractBinningKDE,
 end
 
 
+function kernel_gaussian(x::StepRangeLen, σ)
+    # N.B. Mathematically normalizing the kernel with the expected factor of
+    #          Δx / σ / sqrt(2T(π))
+    #      breaks down when σ << Δx. Instead of trying to work around that, take the easy
+    #      route and just post-normalize an unnormalized calculation.
+    τ = inv(sqrt(oftype(σ, 2)) * σ)
+    s = zero(σ)
+
+    # N.B. Given x[ii] must be calculated, benchmarking shows it's faster to compute and
+    #      store in g and then follow-up with actually calculating the Gaussian, seemingly
+    #      because this version vectorizes calculating x[ii] (whereas the next loop's
+    #      exp() prevents vectorization).
+    g = copyto!(similar(x), x)
+    @simd for ii in eachindex(g)
+        @inbounds g[ii] = z = exp(-(g[ii] * τ)^2)
+        s += z
+    end
+    rmul!(g, inv(s))
+    return g
+end
+
 """
     BasicKDE{M<:AbstractBinningKDE} <: AbstractKDEMethod
 
@@ -450,13 +472,7 @@ function estimate(::BasicKDE, binned::UnivariateKDE{T}, info::UnivariateKDEInfo)
     nn = ceil(Int, 4bw / Δx)
     xx = range(-nn * Δx, nn * Δx, step = Δx)
 
-    # construct the convolution kernel
-    # N.B. Mathematically normalizing the kernel, such as with
-    #        kernel = exp.(-(xx ./ bw) .^ 2 ./ 2) .* (Δx / bw / sqrt(2T(π)))
-    #      breaks down when bw << Δx. Instead of trying to work around that, just take the
-    #      easy route and just post-normalize a simpler calculation.
-    kernel = exp.(-(xx ./ bw) .^ 2 ./ 2)
-    kernel ./= sum(kernel)
+    kernel = kernel_gaussian(xx, bw)
     info.kernel = UnivariateKDE{eltype(xx)}(xx, kernel)
 
     # convolve the data with the kernel to construct a density estimate
@@ -503,28 +519,37 @@ function estimate(method::LinearBoundaryKDE, binned::UnivariateKDE{T}, info::Uni
     # see Eqn 12 & 16 of Lewis (2019)
     #   N.B. the denominator of A₀ should have [W₂]⁻¹ instead of W₂
     kx, K = info.kernel
+    KI = eachindex(K)
     K̂ = plan_conv(f, K)
 
     Θ = fill!(similar(f, R), one(R))
     μ₀ = conv(Θ, K̂, :same)
 
-    K = K .* kx
+    @simd for ii in KI
+        @inbounds K[ii] *= kx[ii]
+    end
     replan_conv!(K̂, K)
     μ₁ = conv(Θ, K̂, :same)
     f′ = conv(h, K̂, :same)
 
-    K .*= kx
+    @simd for ii in KI
+        @inbounds K[ii] *= kx[ii]
+    end
     replan_conv!(K̂, K)
     μ₂ = conv(Θ, K̂, :same)
 
-    # Mathematically f from basic KDE is strictly non-negative, but numerically we
-    # frequently find small negative values. The following only works when it is truly
-    # non-negative.
-    f .= max.(zero(_invunit(T)), f)
-    # function to force f̂ to be positive
-    # see Eqn. 17 of Lewis (2019)
-    pos(f₁, f₂) = iszero(f₁) ? zero(f₁) : f₁ * exp(f₂ / f₁ - one(f₁))
-    f .= pos.(f ./ μ₀, (μ₂ .* f .- μ₁ .* f′) ./ (μ₀ .* μ₂ .- μ₁.^2))
+    # Function to force f̂ to be positive — see Eqn. 17 of Lewis (2019)
+    # N.B. Mathematically f from basic KDE is strictly non-negative, but numerically we
+    #      frequently find small negative values. The following only works when it is truly
+    #      non-negative.
+    @simd for ii in eachindex(f)
+        @inbounds begin
+            f₀ = max(f[ii], zero(_invunit(T)))
+            f₁ = f₀ / μ₀[ii]
+            f₂ = (μ₂[ii] * f[ii] - μ₁[ii] * f′[ii]) / (μ₀[ii] * μ₂[ii] - μ₁[ii]^2)
+            f[ii] = iszero(f₁) ? f₁ : f₁ * exp(f₂ / f₁ - one(f₁))
+        end
+    end
 
     return UnivariateKDE{T}(x, f), info
 end
@@ -569,17 +594,21 @@ end
 function estimate(method::MultiplicativeBiasKDE, binned::UnivariateKDE{T}, info::UnivariateKDEInfo) where {T}
     # generate pilot KDE
     pilot, info = estimate(method.method, binned, info)
+    I = eachindex(pilot.f)
 
     # use the pilot KDE to flatten the unsmoothed histogram
-    nonzero(x) = iszero(x) ? oneunit(x) : x
-    pilot.f .= nonzero.(pilot.f)
-    binned.f ./= _isunitless(T) ? pilot.f : pilot.f .* oneunit(T)
+    @inline nonzero(x) = iszero(x) ? one(x) : x * oneunit(T)
+    @simd for ii in I
+        @inbounds binned.f[ii] /= nonzero(pilot.f[ii])
+    end
 
     # then run KDE again on the flattened distribution
     iter, _ = estimate(method.method, binned, info)
 
     # unflatten and return
-    iter.f .*= _isunitless(T) ? pilot.f : pilot.f .* oneunit(T)
+    @simd for ii in I
+        @inbounds iter.f[ii] *= nonzero(pilot.f[ii])
+    end
     return iter, info
 end
 
@@ -761,9 +790,12 @@ function bandwidth(isj::ISJBandwidth{<:Any}, v::AbstractVector{T},
     h₀ = info.bandwidth / Δx
     #   2. Via the Fourier scaling theorem, f(x / Δx) ⇔ Δx × f̂(k), we must scale the DCT
     #      by the grid step size.
-    f̂ = _isunitless(T) ? f : f .* oneunit(T)
+    f̂ = similar(f, _unitless(T))
+    @simd for I in eachindex(f)
+        @inbounds f̂[I] = f[I] * oneunit(T)
+    end
     FFTW.r2r!(f̂, FFTW.REDFT10)
-    f̂ .*= (Δx / oneunit(T))
+    rmul!(f̂, Δx / oneunit(T))
 
     # Now we simply solve for the fixed-point solution:
     h = Δx * _ISJ.estimate(isj.niter, neff, f̂, h₀)
@@ -826,6 +858,6 @@ function kde(data;
                         lo, hi, boundary, bounds, nbins, bandwidth, bwratio)
     # The pipeline is not perfectly norm-preserving, so renormalize before returning to
     # the user.
-    estim.f ./= sum(estim.f) * step(estim.x)
+    rdiv!(estim.f, sum(estim.f) * step(estim.x))
     return estim
 end
