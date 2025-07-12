@@ -350,7 +350,9 @@ function init(method::K,
         # Use a larger bandwidth for higher-order estimators which achieve lower bias
         # See Lewis (2019) Eqn 35 and Footnote 10.
         if m > 1
-            bandwidth′ *= neff ^ (1 // 5 - 1 // (4m + 1))
+            # p = 1 // 5 - 1 // (4m + 1)
+            p = oftype(neff, 4m - 4) / (20m + 5)
+            bandwidth′ *= neff ^ p
         end
     else
         bandwidth′ = convert(T, bandwidth)
@@ -672,7 +674,7 @@ function bandwidth(::SilvermanBandwidth, v::AbstractVector{T},
     #   - bw = σ̂ n^(-1/5) C₂(k)
     #     C₂(k) = 2 ( 8R(k)√π / 96κ₂² )^(1/5) == (4/3)^(1/5)
     return iszero(σ²) ? eps(one(T)) :
-        sqrt(σ²) * (oftype(one(T), (4 // 3)) / neff)^(one(T) / 5)
+        sqrt(σ²) * (oftype(one(T), (4one(T) / 3)) / neff)^(one(T) / 5)
 end
 
 module _ISJ
