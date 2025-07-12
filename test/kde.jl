@@ -434,7 +434,7 @@ end
         import .KDE: ISJBandwidth, SilvermanBandwidth
 
         @testset "Internals" begin
-            # Check that the implementation of _ISJ.∂ʲ agrees with the analytic answer we
+            # Check that the implementation of ISJ.∂ʲ agrees with the analytic answer we
             # can derive for a Gaussian distribution
             h₀, σ₀, npts = 1.0, 2.1, 512  # arbitrary
             x = range(-6σ₀, 6σ₀, length = npts)
@@ -444,7 +444,7 @@ end
             f̂ = FFTW.r2r(g, FFTW.REDFT10) .* Δx
             h, σ = h₀ / Δx, σ₀ / Δx
             for j in 0:7
-                @test KDE._ISJ.∂ʲ(f̂, h, j) ≈ norm_G_conv_djK_dxj(σ, h, j) atol=sqrt(eps(1.0))
+                @test KDE.ISJ.∂ʲ(f̂, h, j) ≈ norm_G_conv_djK_dxj(σ, h, j) atol=sqrt(eps(1.0))
             end
         end
 

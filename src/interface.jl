@@ -123,3 +123,56 @@ Packages may specialize this method on the `spec` argument to modify the behavio
 the boundary inference for new argument types.
 """
 function boundary end
+
+"""
+```julia
+@enum T Closed Open ClosedLeft ClosedRight
+const OpenLeft = ClosedRight
+const OpenRight = ClosedLeft
+```
+
+Enumeration to describe the desired boundary conditions of the domain of the kernel
+density estimate ``K``.
+For some given data ``d ∈ [a, b]``, the boundary conditions have the following impact:
+
+- `Closed`: The domain ``K ∈ [a, b]`` is used directly as the bounds of the binning.
+- `Open`: The desired domain ``K ∈ (-∞, +∞)`` is effectively achieved by widening the
+  bounds of the data by the size of the finite convolution kernel.
+  Specifically, the binning is defined over the range ``[a - 8σ, b + 8σ]`` where ``σ``
+  is the bandwidth of the Gaussian convolution kernel.
+- `ClosedLeft`: The left half-closed interval ``K ∈ [a, +∞)`` is used as the bounds for
+  binning by adjusting the upper limit to the range ``[a, b + 8σ]``.
+  The equivalent alias `OpenRight` may also be used.
+- `ClosedRight`: The right half-closed interval ``K ∈ (-∞, b]`` is used as the bounds for
+  binning by adjusting the lower limit to the range ``[a - 8σ, b]``.
+  The equivalent alias `OpenLeft` may also be used.
+"""
+baremodule Boundary
+    import ..Base.@enum
+
+    export Closed, Open, ClosedLeft, ClosedRight, OpenLeft, OpenRight
+
+    @enum T Closed Open ClosedLeft ClosedRight
+    const OpenLeft = ClosedRight
+    const OpenRight = ClosedLeft
+end
+using .Boundary
+
+boundary(spec::Boundary.T) = spec
+
+"""
+    B = boundary(spec::Symbol)
+
+Converts the following symbols to its corresponding boundary style:
+- `:open` -> [`Open`](@ref Boundary)
+- `:closed` -> [`Closed`](@ref Boundary)
+- `:closedleft` and `:openright` -> [`ClosedLeft`](@ref Boundary)
+- `:closedright` and `:openleft` -> [`ClosedRight`](@ref Boundary)
+"""
+boundary(spec::Symbol) = spec === :open ? Open :
+                         spec === :closed ? Closed :
+                         spec === :closedleft ? ClosedLeft :
+                         spec === :openright ? ClosedLeft :
+                         spec === :closedright ? ClosedRight :
+                         spec === :openleft ? ClosedRight :
+                         throw(ArgumentError("Unknown boundary option: $spec"))
