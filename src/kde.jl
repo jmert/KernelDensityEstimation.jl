@@ -708,7 +708,7 @@ module _ISJ
     function γ(neff::T, f̂::Vector{T}, j::Int, h::T) where {T<:Real}
         N² = ∂ʲ(f̂, h, j + 1)
         fac1 = (T(1) + T(2) ^ -T(j + 0.5)) / 3
-        fac2 = prod(T(1):2:T(2j-1)) / (sqrt(T(π) / 2) * neff * N²)
+        fac2 = mapreduce(T, *, 1:2:(2j-1)) / (sqrt(T(π) / 2) * neff * N²)
         return (fac1 * fac2) ^ (T(1) / (2j + 3))
     end
 
