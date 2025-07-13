@@ -1,11 +1,8 @@
 module Histogramming
 
 import .._invunit, .._unitless
+import ..AbstractBinningKDE, ..HistogramBinning, ..LinearBinning
 
-abstract type AbstractBinning end
-
-struct HistogramBinning <: AbstractBinning end
-struct LinearBinning <: AbstractBinning end
 
 struct HistEdge{T,I}
     lo::T
@@ -102,7 +99,7 @@ function _histogram!(binning::B,
                      edges::Tuple{Vararg{HistEdge,N}},
                      data::AbstractVector{<:Tuple{Vararg{Any,N}}},
                      weights::Union{Nothing,<:AbstractVector},
-                    ) where {B<:AbstractBinning, R, N}
+                    ) where {B<:AbstractBinningKDE, R, N}
     Z = ntuple(identity, Val(N))
 
     # run through data vector and bin entries if they are within bounds
@@ -138,7 +135,7 @@ _hist_eltype(edges::Tuple{Vararg{HistEdge}}) = __hist_eltype(map(eltype, edges))
 _hist_size(edges::Tuple{Vararg{AbstractRange}}) = map(e -> length(e) - 1, edges)
 _hist_size(edges::Tuple{Vararg{HistEdge}}) = map(e -> e.nbin, edges)
 
-function _histogram(binning::AbstractBinning,
+function _histogram(binning::AbstractBinningKDE,
                     data::AbstractVector{<:Tuple{Vararg{Any,N}}},
                     edges::Tuple{Vararg{HistEdge,N}};
                     weights::Union{Nothing,<:AbstractVector} = nothing
@@ -147,7 +144,7 @@ function _histogram(binning::AbstractBinning,
     _histogram!(binning, hist, edges, data, weights)
     return hist
 end
-function _histogram(binning::AbstractBinning,
+function _histogram(binning::AbstractBinningKDE,
                     data::AbstractVector{<:Tuple{Vararg{Any,N}}},
                     edges::Tuple{Vararg{AbstractRange,N}};
                     weights::Union{Nothing,<:AbstractVector} = nothing
@@ -155,7 +152,7 @@ function _histogram(binning::AbstractBinning,
     edges′ = map(HistEdge, edges)
     return _histogram(binning, data, edges′; weights)
 end
-function _histogram(binning::AbstractBinning,
+function _histogram(binning::AbstractBinningKDE,
                     data::AbstractVector{<:Tuple{Vararg{Any,N}}},
                     edges::Union{<:HistEdge,<:AbstractRange}...;
                     weights::Union{Nothing,<:AbstractVector} = nothing

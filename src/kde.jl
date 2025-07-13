@@ -391,10 +391,6 @@ end
 
 estimator_order(::Type{<:AbstractBinningKDE}) = 0
 
-
-_kde2hist_method(::HistogramBinning) = Histogramming.HistogramBinning()
-_kde2hist_method(::LinearBinning) = Histogramming.LinearBinning()
-
 function estimate(method::AbstractBinningKDE,
                   data::AbstractVector{T},
                   weights::Union{Nothing, <:AbstractVector},
@@ -402,8 +398,8 @@ function estimate(method::AbstractBinningKDE,
     lo, hi, nbins = info.lo, info.hi, info.nbins
 
     data′ = reinterpret(reshape, Tuple{T}, data)
-    f = Histogramming._histogram(_kde2hist_method(method),
-                                 data′, (Histogramming.HistEdge(lo, hi, nbins),); weights)
+    f = Histogramming._histogram(method, data′,
+                                 (Histogramming.HistEdge(lo, hi, nbins),); weights)
     if lo == hi
         centers = range(lo, hi, length = 1)
     else
