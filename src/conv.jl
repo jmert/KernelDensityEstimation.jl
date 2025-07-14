@@ -81,17 +81,17 @@ function plan_conv(f::AbstractArray{U,N}, K::AbstractArray{V,N}) where {N, U, V}
     return replan_conv!(plan, K)
 end
 
-function conv(f, K, shape::Symbol)
-    if shape === :full
-        return conv(f, K, ConvShape.FULL)
-    elseif shape === :same
-        return conv(f, K, ConvShape.SAME)
-    elseif shape === :valid
-        return conv(f, K, ConvShape.VALID)
-    else
-        throw(ArgumentError("Invalid convolution shape, $shape"))
-    end
-end
+#function conv(f, K, shape::Symbol)
+#    if shape === :full
+#        return conv(f, K, ConvShape.FULL)
+#    elseif shape === :same
+#        return conv(f, K, ConvShape.SAME)
+#    elseif shape === :valid
+#        return conv(f, K, ConvShape.VALID)
+#    else
+#        throw(ArgumentError("Invalid convolution shape, $shape"))
+#    end
+#end
 conv(f, K) = conv(f, K, ConvShape.FULL)
 
 function conv(f::AbstractArray{S,N}, K::AbstractArray{T,N}, shape::ConvShape.T) where {N, S, T}

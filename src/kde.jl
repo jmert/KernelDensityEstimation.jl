@@ -484,7 +484,7 @@ function estimate(::BasicKDE, binned::UnivariateKDE{T}, info::UnivariateKDEInfo)
     info.kernel = UnivariateKDE{eltype(xx)}(xx, kernel)
 
     # convolve the data with the kernel to construct a density estimate
-    f̂ = conv(f, kernel, :same)
+    f̂ = conv(f, kernel, ConvShape.SAME)
     estim = UnivariateKDE{T}(x, f̂)
     return estim, info
 end
@@ -531,20 +531,20 @@ function estimate(method::LinearBoundaryKDE, binned::UnivariateKDE{T}, info::Uni
     K̂ = plan_conv(f, K)
 
     Θ = fill!(similar(f, R), one(R))
-    μ₀ = conv(Θ, K̂, :same)
+    μ₀ = conv(Θ, K̂, ConvShape.SAME)
 
     @simd for ii in KI
         @inbounds K[ii] *= kx[ii]
     end
     replan_conv!(K̂, K)
-    μ₁ = conv(Θ, K̂, :same)
-    f′ = conv(h, K̂, :same)
+    μ₁ = conv(Θ, K̂, ConvShape.SAME)
+    f′ = conv(h, K̂, ConvShape.SAME)
 
     @simd for ii in KI
         @inbounds K[ii] *= kx[ii]
     end
     replan_conv!(K̂, K)
-    μ₂ = conv(Θ, K̂, :same)
+    μ₂ = conv(Θ, K̂, ConvShape.SAME)
 
     # Function to force f̂ to be positive — see Eqn. 17 of Lewis (2019)
     # N.B. Mathematically f from basic KDE is strictly non-negative, but numerically we
