@@ -1,6 +1,9 @@
 import FFTW
 import LinearAlgebra: rmul!, rdiv!
 import Logging: @warn
+@static if VERSION < v"1.9"
+    import Base: invokelatest
+end
 
 """
 ```julia
@@ -277,10 +280,17 @@ bounds(data, spec::Tuple{Union{<:Number,Nothing},
                          Union{<:Number,Nothing}}) = bounds(data, (spec..., :open))
 
 
-@noinline _warn_bounds_override(bounds, lo, hi) =
+@noinline function _warn_bounds_override(bounds, lo, hi)
+    @nospecialize
     @warn "Keyword `bounds` is overriding non-nothing `lo` and/or `hi`" bounds=bounds lo=lo hi=hi
+    return nothing
+end
 
-@noinline _warn_unused(kwargs) = @warn "Unused keyword argument(s)" kwargs=kwargs
+@noinline function _warn_unused(kwargs)
+    @nospecialize
+    @warn "Unused keyword argument(s)" kwargs=kwargs
+    return nothing
+end
 
 """
     data, weights, details = init(
@@ -313,7 +323,7 @@ function init(method::K,
     # Handle the option to provide either a single bounds argument or the triple of lo, hi,
     # and boundary
     if !isnothing(bounds) && (!isnothing(lo) || !isnothing(hi))
-        _warn_bounds_override(bounds, lo, hi)
+        invokelatest(_warn_bounds_override, bounds, lo, hi)::Nothing
     end
     options.bounds = bounds′ = isnothing(bounds) ? (lo, hi, boundary) : bounds
 
@@ -378,7 +388,7 @@ function init(method::K,
     # Warn if we received any parameters which should have been consumed earlier in
     # the pipeline
     if length(kwargs) > 0
-        _warn_unused(kwargs)
+        invokelatest(_warn_unused, kwargs)::Nothing
     end
     return data, weights, options
 end
