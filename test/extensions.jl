@@ -38,16 +38,17 @@ end
 
 @testset "Makie" begin
     using CairoMakie
+    using .Makie: plotfunc
     using Unitful
 
     rv = rand(1000)
     K = kde(rv, lo = 0.0, hi = 1.0, boundary = :closed)
 
     # simply test that invocation is not an error
-    @test plot(K).plot isa Plot{lines}
-    @test lines(K).plot isa Plot{lines}
-    @test scatter(K).plot isa Plot{scatter}
-    @test stairs(K).plot isa Plot{stairs}
+    @test plotfunc(plot(K).plot) === lines
+    @test plotfunc(lines(K).plot) === lines
+    @test plotfunc(scatter(K).plot) === scatter
+    @test plotfunc(stairs(K).plot) === stairs
 
     # stairs has special behavior; check that the converted data correctly closes the
     # histogram
@@ -57,10 +58,13 @@ end
     @test y[end] ≈ [1.0, 0.0] atol=eps()
     @test y[end][1] == y[end-1][1]
 
-    # check that unitful KDEs plot as well
-    Ku = kde(rv .* 1u"m", lo = 0.0, hi = 1.0, boundary = :closed)
-    @test plot(Ku).plot isa Plot{lines}
-    @test stairs(Ku).plot isa Plot{stairs}
+    # unitful handling was added in Makie v0.21
+    if isdefined(Makie, :UnitfulConversion)
+        # check that unitful KDEs plot as well
+        Ku = kde(rv .* 1u"m", lo = 0.0, hi = 1.0, boundary = :closed)
+        @test plot(Ku).plot isa Plot{lines}
+        @test stairs(Ku).plot isa Plot{stairs}
+    end
 end
 
 @testset "UnicodePlots" begin
