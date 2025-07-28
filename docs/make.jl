@@ -24,7 +24,10 @@ showcases = map(ff -> joinpath("showcase", ff),
 makedocs(
     format = Documenter.HTML(
         mathengine = Documenter.MathJax3(),
-        assets = String["assets/citations.css"],
+        assets = String[
+            "assets/citations.css",
+            "assets/overrides.css",
+        ],
     ),
     sitename = "Kernel Density Estimation",
     authors = "Justin Willmert",

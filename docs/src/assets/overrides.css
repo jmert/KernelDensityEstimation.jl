@@ -1,0 +1,2 @@
+.docs-sidebar .docs-logo > img { max-height: unset !important; }
+.docs-sidebar .docs-package-name { display: none; }
