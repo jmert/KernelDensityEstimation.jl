@@ -482,11 +482,13 @@ function init(method::K,
         bandwidth′ = KernelDensityEstimation.bandwidth(
                 bandwidth, data, lo′, hi′, boundary′; weights)::T
         m = estimator_order(typeof(method))
+        d = 1  # TODO: generalize to N-dimensional
         # Use a larger bandwidth for higher-order estimators which achieve lower bias
-        # See Lewis (2019) Eqn 35 and Footnote 10.
+        # See Lewis (2019) Eqn 32, 41 and Footnote 10 (N.B. Eqn 41 and Footnote 10 use
+        # different expressions) and also Hansen (2009) Sec 2.11 (which helps clarify).
         if m > 1
-            # p = 1 // 5 - 1 // (4m + 1)
-            p = oftype(neff, 4m - 4) / (20m + 5)
+            # p = 1 // (4 + d) - 1 // (4m + d)
+            p = inv(oftype(neff, 4 + d)) - inv(oftype(neff, 4m + d))
             bandwidth′ *= neff ^ p
         end
     else
