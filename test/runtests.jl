@@ -31,6 +31,7 @@ end
 @testset verbose=true "KernelDensityEstimation tests" begin
     @testset "Convolutions" begin; include("conv.jl"); end
     @testset "Histograms" begin; include("histogram.jl"); end
+    @testset verbose=true "Bandwidths" begin; include("bandwidth.jl"); end
     @testset verbose=true "Kernel Density Estimation" begin; include("kde.jl"); end
     @testset verbose=true "Extensions" begin
         if isdefined(Base, :get_extension)
