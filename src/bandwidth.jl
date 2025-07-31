@@ -125,17 +125,19 @@ function bandwidth(::SilvermanBandwidth, v::AbstractVector{T},
                    ) where {T}
     neff, Σ = _neff_covar((v,), (lo,), (hi,), weights)
     σ = sqrt(Σ) * oneunit(eltype(v))
+    d = 1  # TODO: generalize to N-dimensional
 
     # From Hansen (2009) — https://users.ssc.wisc.edu/~bhansen/718/NonParametrics1.pdf
     # for a Gaussian kernel:
     # - Table 1:
     #   - R(k) = 1 / 2√π
     #   - κ₂(k) = 1
-    # - Section 2.9, letting ν = 2:
-    #   - bw = σ̂ n^(-1/5) C₂(k)
-    #     C₂(k) = 2 ( 8R(k)√π / 96κ₂² )^(1/5) == (4/3)^(1/5)
+    #   - ν = 2
+    # - Section 2.11 (for uncorrelated dimensions):
+    #   - bw_j = σ̂_j C₂(k,d) n^(-1/(4+d))
+    #     C₂(k,d) = (4/(2 + d))^(1/(4+d))
     return iszero(σ) ? eps(oneunit(T)) :
-        σ * (oftype(one(T), (4one(T) / 3)) / neff)^(one(T) / 5)
+        σ * (oftype(one(T), (4one(T) / (2 + d))) / neff)^(one(T) / (4 + d))
 end
 
 
