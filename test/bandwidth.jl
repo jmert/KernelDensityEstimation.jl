@@ -159,7 +159,7 @@ end
     @testset "Unitful numbers" begin
         σ = Quantity(rv_norm_σ, u"m")
         v = Quantity.(view(rv_norm_long, 1:100), u"m")
-        @test (@inferred KDE.bandwidth(KDE.SilvermanBandwidth(), v, -6σ, 6σ, KDE.Open)) isa eltype(v)
+        @test (@inferred KDE.bandwidth(KDE.SilvermanBandwidth(), v, -6σ, 6σ, KDE.Open)) isa Float64
     end
 end # Silverman Bandwidth
 
@@ -218,7 +218,7 @@ end # Silverman Bandwidth
     @testset "Unitful numbers" begin
         σ = Quantity(rv_norm_σ, u"m")
         v = Quantity.(view(rv_norm_long, 1:100), u"m")
-        @test (@inferred KDE.bandwidth(KDE.ISJBandwidth(fallback = false), v, -6σ, 6σ, KDE.Open)) isa eltype(v)
+        @test (@inferred KDE.bandwidth(KDE.ISJBandwidth(fallback = false), v, -6σ, 6σ, KDE.Open)) isa Float64
     end
 end  # ISJ Bandwidth
 

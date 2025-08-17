@@ -1,4 +1,12 @@
-import LinearAlgebra: Symmetric, cholesky
+import LinearAlgebra: Symmetric, cholesky!
+
+# convenient wrapper for univariate inputs
+function bandwidth(estim::AbstractBandwidthEstimator,
+                   data::AbstractVector, lo::Any, hi::Any, boundary::Boundary.T;
+                   weights::Union{Nothing,<:AbstractVector} = nothing)
+    return bandwidth(estim, (data,), (lo,), (hi,), (boundary,); weights)
+end
+
 
 # Get the effective sample size and (co)variance simultaneously
 #
@@ -49,16 +57,15 @@ function _neff_covar(coords::Tuple{Vararg{AbstractVector,N}},
             μ[jj] = ω̄ * μ[jj] + ω * x[jj]
         end
         # @. Σ = ω̄ * Σ + ω * (x - μ) * (x - μ₋₁)'
-        #  with only the upper-triangle filled
         for jj in 1:N
             yy = x[jj] - μ₋₁[jj]
-            for kk in 1:jj
+            for kk in 1:N
                 Σ[kk,jj] = ω̄ * Σ[kk, jj] + ω * (x[kk] - μ[kk]) * yy
             end
         end
     end
     neff = wsum^2 / wsqr
-    return neff, Symmetric(Σ)
+    return neff, Σ
 end
 
 # specialize for 1D case where the variance is scalar, so allocating arrays can be avoided
@@ -97,36 +104,43 @@ end
 """
     SilvermanBandwidth <: AbstractBandwidthEstimator
 
-Estimates the necessary bandwidth of a vector of data ``v`` using Silverman's Rule for
-a Gaussian smoothing kernel:
+Estimates the necessary bandwidth of data at coordinates
+``(\\symbf{v}_1, \\symbf{v}_2, \\ldots, \\symbf{v}_d)`` with weights ``\\symbf{w}``
+using Silverman's Rule for a Gaussian smoothing kernel:
 ```math
-    h = \\left(\\frac{4}{3n_\\mathrm{eff}}\\right)^{1/5} σ̂
+    \\symbf{h} = \\left(\\frac{4}{(2 + d)n_\\mathrm{eff}}\\right)^{2/(4 + d)} \\symbf{Σ}
 ```
-where ``n_\\mathrm{eff}`` is the effective number of degrees of freedom of ``v``, and
-``σ̂^2`` is its sample variance.
+where ``d`` is the number of indepedent dimensions,
+``n_\\mathrm{eff}`` is the effective number of degrees of freedom of the data,
+and ``\\symbf{Σ}`` is its weighted sample covariance.
 
 See also [`ISJBandwidth`](@ref)
 
 # Extended help
 
-The sample variance and effective number of degrees of freedom are calculated using
+In the univariate (``d = 1``) case, the bandwidth ``h = \\sqrt{\\symbf{h}_{11}}`` is
+proportional to the standard deviation rather than variance — see the interface
+description of [`bandwidth()`](@ref).
+
+The sample covariance and effective number of degrees of freedom are calculated using
 weighted statistics, where the latter is defined to be Kish's effective sample size
 ``n_\\mathrm{eff} = (\\sum_i w_i)^2 / \\sum_i w_i^2`` for weights ``w_i``.
-For uniform weights, this reduces to the length of the vector ``v``.
+For uniform weights, this reduces to the length of the vector(s) ``\\symbf{v}_j``.
 
 ## References
 - [Hansen2009](@citet)
 """
 struct SilvermanBandwidth <: AbstractBandwidthEstimator end
 
-function bandwidth(::SilvermanBandwidth, v::AbstractVector{T},
-                   lo::T, hi::T, ::Boundary.T;
-                   weights::Union{Nothing, <:AbstractVector} = nothing
-                   ) where {T}
-    neff, Σ = _neff_covar((v,), (lo,), (hi,), weights)
-    σ = sqrt(Σ) * oneunit(eltype(v))
-    d = 1  # TODO: generalize to N-dimensional
-
+function bandwidth(::SilvermanBandwidth,
+                   data::Tuple{Vararg{AbstractVector,N}},
+                   lo::Tuple{Vararg{Any,N}},
+                   hi::Tuple{Vararg{Any,N}},
+                   ::Tuple{Vararg{Boundary.T,N}};
+                   weights::Union{Nothing,<:AbstractVector} = nothing
+                   ) where {N}
+    T = promote_type(map(_unitless∘eltype, data)...)
+    neff, Σ = _neff_covar(data, lo, hi, weights)
     # From Hansen (2009) — https://users.ssc.wisc.edu/~bhansen/718/NonParametrics1.pdf
     # for a Gaussian kernel:
     # - Table 1:
@@ -136,10 +150,44 @@ function bandwidth(::SilvermanBandwidth, v::AbstractVector{T},
     # - Section 2.11 (for uncorrelated dimensions):
     #   - bw_j = σ̂_j C₂(k,d) n^(-1/(4+d))
     #     C₂(k,d) = (4/(2 + d))^(1/(4+d))
-    return iszero(σ) ? eps(oneunit(T)) :
-        σ * (oftype(one(T), (4one(T) / (2 + d))) / neff)^(one(T) / (4 + d))
+    #   - bw_j = σ̂_j * (4/(2 + d)n)^(1/(4+d))
+    bw_scale = (oftype(one(T), (4one(T) / (2 + N))) / neff)^(one(T) / (4 + N))
+    # where the bandwidth scaling factor is derived for uncorrelated dimensions.
+    # Because a non-diagonal covariance matrix can be diagonalized via eigenvalue
+    # decomposition, the scaling factor still applies:
+    cov_scale = bw_scale ^ 2
+    # Σ .= ifelse.(iszero.(Σ), eps(cov_scale), Σ .* cov_scale)
+    for jj in 1:N
+        for kk in 1:N
+            Σ[kk, jj] = iszero(Σ[kk, jj]) ? eps(cov_scale) : Σ[kk, jj] * cov_scale
+        end
+    end
+    return cholesky!(Symmetric(Σ, :L))
 end
 
+# specialize for 1D case where the variance is scalar, so allocating arrays can be avoided
+function bandwidth(::SilvermanBandwidth,
+                   data::Tuple{AbstractVector},
+                   lo::Tuple{Any},
+                   hi::Tuple{Any},
+                   ::Tuple{Boundary.T};
+                   weights::Union{Nothing,<:AbstractVector} = nothing
+                   )
+    T = promote_type(map(_unitless∘eltype, data)...)
+    neff, Σ = _neff_covar(data, lo, hi, weights)
+    # From Hansen (2009) — https://users.ssc.wisc.edu/~bhansen/718/NonParametrics1.pdf
+    # for a Gaussian kernel:
+    # - Table 1:
+    #   - R(k) = 1 / 2√π
+    #   - κ₂(k) = 1
+    #   - ν = 2
+    # - Section 2.11 (for uncorrelated dimensions):
+    #   - bw_j = σ̂_j C₂(k,d) n^(-1/(4+d))
+    #     C₂(k,d) = (4/(2 + d))^(1/(4+d))
+    #   - bw_j = σ̂_j * (4/(2 + d)n)^(1/(4+d))
+    bw_scale = (oftype(one(T), (4one(T) / 3)) / neff)^(one(T) / 5)
+    return iszero(Σ) ? sqrt(eps(bw_scale^2)) : sqrt(Σ) * bw_scale
+end
 
 module ISJ
     # An implementation of Brent's method, translated from the algorithm described in
@@ -307,29 +355,29 @@ Base.@kwdef struct ISJBandwidth{B<:AbstractBinningKDE,R<:Real} <: AbstractBandwi
     fallback::Bool = true
 end
 
-function bandwidth(isj::ISJBandwidth{<:Any}, v::AbstractVector{T},
-                   lo::T, hi::T, boundary::Boundary.T;
+function bandwidth(isj::ISJBandwidth{<:Any},
+                   data::Tuple{AbstractVector{T}},
+                   lo::Tuple{T}, hi::Tuple{T}, boundary::Tuple{Boundary.T};
                    weights::Union{Nothing, <:AbstractVector} = nothing
                    ) where {T}
     # The Silverman bandwidth estimator should be sufficient to obtain a fine-enough
     # binning that the ISJ algorithm can iterate.
     # We need a histogram, so just reuse the binning base case of the estimator pipeline
     # to provide what we need.
-    bounds = (lo, hi, boundary)
-    (x, f), info = estimate(isj.binning, v, weights; bounds, isj.bwratio,
+    bounds = (lo[1], hi[1], boundary[1])
+    (x, f), info = estimate(isj.binning, data[1], weights; bounds, isj.bwratio,
                             bandwidth = SilvermanBandwidth())
 
     bandwidth = info.bandwidth[1]
     neff = info.neffective
-    Δx = step(x)
-    Δz = Δx / oneunit(Δx)
+    Δx = (tmp = step(x); tmp / oneunit(tmp))
     # The core of the ISJ algorithm works in a normalized unit system where Δx = 1.
     # Two things of note:
     #
     #   1. We initialize the fixed-point algorithm with the Silverman bandwidth, but
     #      scaled correctly for the change in axis. Then afterwards, the ISJ bandwidth
     #      will need to be scaled back to the original axis, e.g. h → Δx × h
-    h₀ = bandwidth / Δz
+    h₀ = bandwidth / Δx
     #   2. Via the Fourier scaling theorem, f(x / Δx) ⇔ Δx × f̂(k), we must scale the DCT
     #      by the grid step size.
     f̂ = similar(f, _unitless(T))
@@ -337,15 +385,15 @@ function bandwidth(isj::ISJBandwidth{<:Any}, v::AbstractVector{T},
         @inbounds f̂[I] = f[I] * oneunit(T)
     end
     FFTW.r2r!(f̂, FFTW.REDFT10)
-    rmul!(f̂, Δz)
+    rmul!(f̂, Δx)
 
     # Now we simply solve for the fixed-point solution:
     h = Δx * ISJ.estimate(isj.niter, neff, f̂, h₀)
 
     # Check that the fixed-point solver converged to a positive value
-    if isnan(h) || h < zero(T)
+    if isnan(h) || h < zero(h)
         if isj.fallback
-            h = bandwidth * oneunit(Δx)  # fallback to the Silverman estimate
+            h = bandwidth  # fallback to the Silverman estimate
         else
             throw(ErrorException("ISJ estimator failed to converge. More data is needed."))
         end

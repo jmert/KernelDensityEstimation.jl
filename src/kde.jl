@@ -1,5 +1,5 @@
 import FFTW
-import LinearAlgebra: rmul!, rdiv!
+import LinearAlgebra: Cholesky, ldiv!, rdiv!, rmul!
 import Logging: @warn
 @static if VERSION < v"1.9"
     import Base: invokelatest
@@ -276,15 +276,15 @@ entrypoint parameters and some internal state variables.
   Algorithm used to estimate an appropriate bandwidth, if a concrete value was not
   provided to the estimator, otherwise `nothing`.
 
-- `bandwidth::Union{Nothing,<:AbstractMatrix{U}}`:
-  The bandwidth (square root of covariance) of the convolution `kernel`.
+- `bandwidth::Union{Nothing,U,<:AbstractMatrix{U}}`:
+  The bandwidth of the convolution `kernel`.
 
 - `kernel::Union{Nothing,`[`MultivariateKDE`](@ref)`{U,N}}`:
   The convolution kernel used to smooth the density estimate.
 """
 mutable struct MultivariateKDEInfo{U,N,
                                    D<:Tuple{Vararg{Tuple{Ei,Ei,Boundary.T} where Ei,N}},
-                                   B<:AbstractMatrix{U},
+                                   B<:Union{U,AbstractMatrix{U}},
                                    K<:MultivariateKDE{U,N}
                                   } <: AbstractKDEInfo{U,N}
     method::AbstractKDEMethod
@@ -316,7 +316,7 @@ function _mvtypeinfo_eltypes(eltypes::P) where {N,P<:NTuple{N,Type}}
         Tuple{Ei, Ei, Boundary.T}
     end
     # the bandwidth matrix and kernel are unitless
-    B = Matrix{U}
+    B = N == 1 ? U : Matrix{U}
     K = multivariate_type_from_axis_eltypes(ntuple(_ -> U, Val(N))...)
     return MultivariateKDEInfo{U,N,Tuple{D...},B,K}
 end
@@ -332,7 +332,7 @@ end
         T = _invunit(E1)
         U = _unitless(T)
         D = Tuple{Tuple{E1, E1, Boundary.T}}
-        B = Matrix{U}
+        B = U
         K = multivariate_type_from_axis_eltypes(U)
         return MultivariateKDEInfo{U,1,D,B,K}
     end
@@ -480,7 +480,7 @@ function init(method::K,
     if bandwidth isa AbstractBandwidthEstimator
         info.bandwidth_alg = bandwidth
         bandwidth′ = KernelDensityEstimation.bandwidth(
-                bandwidth, data, lo′, hi′, boundary′; weights)::T
+                bandwidth, data, lo′, hi′, boundary′; weights)
         m = estimator_order(typeof(method))
         d = 1  # TODO: generalize to N-dimensional
         # Use a larger bandwidth for higher-order estimators which achieve lower bias
@@ -492,9 +492,9 @@ function init(method::K,
             bandwidth′ *= neff ^ p
         end
     else
-        bandwidth′ = convert(T, bandwidth)
+        bandwidth′ = convert(_unitless(T), bandwidth)
     end
-    info.bandwidth = fill(bandwidth′ / oneunit(T), 1, 1)
+    info.bandwidth = bandwidth′
     info.bwratio = (bwratio,)
 
     # Warn if we received any parameters which should have been consumed earlier in
@@ -507,7 +507,7 @@ end
 
 function _domain_to_edgeranges(info::UnivariateKDEInfo)
     lo, hi, bc = something(info.domain)[1]
-    bw = something(info.bandwidth)[1] * oneunit(lo)
+    bw = something(info.bandwidth) * oneunit(lo)
     bwratio = something(info.bwratio)[1]
     nbins = !isnothing(info.nbins) ? info.nbins[1] : nothing
 
@@ -562,12 +562,12 @@ function estimate(method::AbstractBinningKDE,
 end
 
 
-function kernel_gaussian(x::StepRangeLen, σ)
+# specialized 1D case
+function kernel_gaussian(x::StepRangeLen, (σ,)::Tuple)
     # N.B. Mathematically normalizing the kernel with the expected factor of
     #          Δx / σ / sqrt(2T(π))
     #      breaks down when σ << Δx. Instead of trying to work around that, take the easy
     #      route and just post-normalize an unnormalized calculation.
-    τ = inv(sqrt(oftype(σ, 2)) * σ)
     s = zero(σ)
 
     # N.B. Given x[ii] must be calculated, benchmarking shows it's faster to compute and
@@ -575,13 +575,96 @@ function kernel_gaussian(x::StepRangeLen, σ)
     #      because this version vectorizes calculating x[ii] (whereas the next loop's
     #      exp() prevents vectorization).
     g = copyto!(similar(x), x)
-    @simd for ii in eachindex(g)
-        @inbounds g[ii] = z = exp(-(g[ii] * τ)^2)
-        s += z
+    n = length(g)
+    σ⁻¹ = inv(σ)
+
+    # reflected symmetry over the midpoint, so calculate only half of the entries (since
+    # exp() is non-trivial)
+    nodd = n & 1 == 1
+    nhalf = n ÷ 2 + nodd
+    ncmp = nodd ? (<) : (≤)
+    for ii in 1:nhalf
+        g[ii] = z = exp(-(g[ii] * σ⁻¹)^2 / 2)
+        if ncmp(ii, nhalf)
+            g[n - ii + 1] = z
+            s += 2z
+        else
+            s += z
+        end
     end
-    rmul!(g, inv(s))
+
+    rmul!(g, inv(s))  # normalize to sum(g) == 1
     return g
 end
+
+# specialied 2D case
+function kernel_gaussian(axes::Tuple{StepRangeLen,StepRangeLen}, Σ::Cholesky)
+    size(Σ) == (2, 2) || throw(DimensionMismatch())
+
+    n = map(length, axes)
+    G = Array{eltype(Σ)}(undef, n)
+    s = zero(eltype(Σ))
+    fill!(G, s)
+
+    L = Σ.L
+    il₁₁ = inv(L[1, 1])  # N.B. Cholesky already requires (l₁₁, l₂₂) ≠ 0
+    l₂₁ = L[2, 1]
+    il₂₂ = inv(L[2, 2])
+
+    # reflected symmetry over the axis, so calculate only half of the entries (since
+    # exp() is non-trivial)
+    nodd = n[1] & 1 == 1
+    nhalf = n[1] ÷ 2 + nodd
+    ncmp = nodd ? (<) : (≤)
+    for jj in 1:n[2]
+        x₂ = axes[2][jj]
+        for ii in 1:nhalf
+            x₁ = axes[1][ii]
+
+            # inlined 2x2 `y = L \ x`
+            y₁ = x₁ * il₁₁
+            y₂ = (x₂ - l₂₁ * y₁) * il₂₂
+
+            g = exp(-(y₁^2 + y₂^2) / 2)
+            G[ii, jj] = g
+            if ncmp(ii, nhalf)
+                G[n[1] - ii + 1, n[2] - jj + 1] = g
+                s += 2g
+            else
+                s += g
+            end
+        end
+    end
+
+    rmul!(G, inv(s))  # normalize to sum(G) == 1
+    return G
+end
+
+# generic N-D case
+function kernel_gaussian(axes::Tuple{Vararg{StepRangeLen,N}}, Σ::Cholesky) where N
+    size(Σ) == (N, N) || throw(DimensionMismatch())
+
+    n = map(length, axes)
+    G = Array{eltype(Σ)}(undef, n)   # output Gaussian
+    s = zero(eltype(Σ))              # sum, for normalization
+
+    x = Vector{eltype(Σ)}(undef, N)  # coordinate vector
+    L = Σ.L
+    for I in CartesianIndices(G)
+        for ii in 1:N
+            x[ii] = axes[ii][I[ii]]
+        end
+        ldiv!(L, x)
+        # g = exp(-x'x / 2)
+        g = exp(-sum(abs2, x) / 2)
+
+        s += g
+        G[I] = g
+    end
+    rmul!(G, inv(s))  # normalize to sum(G) == 1
+    return G
+end
+
 
 """
     BasicKDE{M<:AbstractBinningKDE} <: AbstractKDEMethod
@@ -611,14 +694,14 @@ end
 function estimate(::BasicKDE, binned::UnivariateKDE, info::UnivariateKDEInfo)
     x, f = binned
     T = _invunit(eltype(x))
-    bw = something(info.bandwidth)[1]
+    bw = something(info.bandwidth)
     Δx = step(x) * oneunit(T)
 
     # make sure the kernel axis is centered on zero
     nn = ceil(Int, 4bw / Δx)
     xx = range(-nn * Δx, nn * Δx, step = Δx)
 
-    kernel = kernel_gaussian(xx, bw)
+    kernel = kernel_gaussian(xx, (bw,))
     info.kernel = UnivariateKDE(xx, kernel)
 
     # convolve the data with the kernel to construct a density estimate

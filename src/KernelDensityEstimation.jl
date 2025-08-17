@@ -14,7 +14,7 @@ export kde
                  :ISJBandwidth, :SilvermanBandwidth,
                  # Interfaces
                  :Open, :Closed, :OpenLeft, :OpenRight, :ClosedLeft, :ClosedRight,
-                 :bounds, :estimate, :estimator_order, :init
+                 :bandwidth, :bounds, :estimate, :estimator_order, :init
                 ))
 end
 

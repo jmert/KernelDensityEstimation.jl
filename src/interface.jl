@@ -102,16 +102,26 @@ the interval and boundary refinement for new argument types.
 function bounds end
 
 """
-    h = bandwidth(estimator::AbstractBandwidthEstimator, data::AbstractVector{T}
-                  lo::T, hi::T, boundary::Boundary.T;
-                  weights::Union{Nothing, <:AbstractVector} = nothing
-                  ) where {T}
+    h = bandwidth(estimator::AbstractBandwidthEstimator,
+                  data::Tuple{Vararg{AbstractVector,N}},
+                  lo::Tuple{Vararg{Any,N}}, hi::Tuple{Vararg{Any,N}},
+                  boundary::Vararg{Boundary.T,N};
+                  weights::Union{Nothing,<:AbstractVector} = nothing
+                  ) where {N}
 
 Determine the appropriate bandwidth `h` of the data set `data` (optionally with
 corresponding `weights`) using chosen `estimator` algorithm.
-The bandwidth is provided the range (`lo` through `hi`) and boundary style (`boundary`) of
-the request KDE method for use in filtering and/or correctly interpreting the data, if
+The bandwidth is provided the domain (`lo` through `hi`) and boundary style(s) (`boundary`)
+of the requested KDE for use in filtering and/or correctly interpreting the data, if
 necessary.
+
+# Extended help
+
+The bandwidth `h` must be a unitless scalar for univariate (`N == 1`) densities, which is
+interpreted as the standard deviation of the Gaussian kernel.
+For multivariate (`N ≥ 2`) densities, `h` must be a (unitless)
+[`Cholesky`](@extref LinearAlgebra.Cholesky) factorization, which corresponds to the
+covariance of the multivariate Gaussian kernel.
 """
 function bandwidth end
 
