@@ -2,6 +2,7 @@ using FFTW
 using LinearAlgebra: I
 using Random: Random, randn
 using Statistics: std, var
+using Unitful
 
 gaussian(x, σ) = exp.(-x .^ 2 ./ 2σ^2) ./ sqrt(2oftype(σ, π) * σ^2)
 
@@ -69,29 +70,34 @@ function G_amise(ν, σ)
 end
 
 @testset "Silverman Bandwidth" begin
+    estim = KDE.SilvermanBandwidth()
+
+    v = view(rv_norm_long, 1:1_000_000)
+    u = ones(length(v))
     σ = rv_norm_σ
+    σ̂ = std(v, corrected = false)
+
+    lo(n) = ntuple(_ -> -10σ, n)
+    hi(n) = ntuple(_ -> +10σ, n)
+    open(n) = ntuple(_ -> KDE.Open, n)
 
     @testset "Variance Estimation" begin
         # Check the implementation of the standard deviation and effective sample size
         # calculation
-        v = view(rv_norm_long, 1:1_000_000)
-        v1 = (v,)
-        lo = (-10σ,)
-        hi = (+10σ,)
-        neff1, var1 = @inferred KDE._neff_covar(v1, lo, hi, nothing)
+        neff1, var1 = @inferred KDE._neff_covar((v,), lo(1), hi(1), nothing)
         @test neff1 == length(v)
-        @test var1 ≈ σ^2 atol = 16.0 / sqrt(neff1)
+        @test var1 ≈ σ̂^2
         # weights = nothing is same as uniform (all ones)
-        neff2, var2 = @inferred KDE._neff_covar(v1, lo, hi, fill(1.0, length(v)))
+        neff2, var2 = @inferred KDE._neff_covar((v,), lo(1), hi(1), fill(1.0, length(v)))
         @test neff2 == neff1
         @test var2 == var1
 
         # 1D is special-cased
         #   It should not allocate
         if VERSION >= v"1.12.0-beta3"
-            @test (@allocated KDE._neff_covar(v1, lo, hi, nothing)) == 0
+            @test (@allocated KDE._neff_covar((v,), lo(1), hi(1), nothing)) == 0
         else
-            @test_broken (@allocated KDE._neff_covar(v1, lo, hi, nothing)) == 0
+            @test_broken (@allocated KDE._neff_covar((v,), lo(1), hi(1), nothing)) == 0
         end
         # 1D is special cased — verify that the general case matches
         gensig = Tuple{#=coords=# Tuple{Vararg{AbstractVector,N}},
@@ -99,7 +105,7 @@ end
                        #=hi=# Tuple{Vararg{Any,N}},
                        #=weights=# Nothing
                        } where N
-        neff3, var3 = invoke(KDE._neff_covar, gensig, v1, lo, hi, nothing)
+        neff3, var3 = invoke(KDE._neff_covar, gensig, (v,), lo(1), hi(1), nothing)
         @test neff3 == neff1
         @test var3 isa AbstractMatrix{Float64}
         @test only(var3) == var1
@@ -110,22 +116,22 @@ end
         # using the same data multiple times is perfect correlation, so all entries
         # in the covariance matrix are identical (and equal to the variance of the data)
         #   2x2
-        neff, covar = KDE._neff_covar((v, v), -10σ.*(1,1), 10σ.*(1,1), nothing)
+        neff, covar = KDE._neff_covar((v, v), lo(2), hi(2), nothing)
         @test neff == length(v)
         @test covar == var1 .* ones(2, 2)
         #   3x3
-        neff, covar = KDE._neff_covar((v, v, v), -10σ.*(1,1,1), 10σ.*(1,1,1), nothing)
+        neff, covar = KDE._neff_covar((v, v, v), lo(3), hi(3), nothing)
         @test neff == length(v)
         @test covar == var1 .* ones(3, 3)
         # circularly-shifting one of the inputs decorrelates the inputs, so then the
         # covariance matrix should be approximately diagonal
         w = circshift(v, -1)
         #   2x2
-        neff, covar = KDE._neff_covar((v, w), -10σ.*(1,1), 10σ.*(1,1), nothing)
+        neff, covar = KDE._neff_covar((v, w), lo(2), hi(2), nothing)
         @test neff == length(v)
         @test covar ≈ var1 * I  atol=16/sqrt(length(v))
         #   3x3 (not diagonal)
-        neff, covar = KDE._neff_covar((v, v, w), -10σ.*(1,1,1), 10σ.*(1,1,1), nothing)
+        neff, covar = KDE._neff_covar((v, v, w), lo(3), hi(3), nothing)
         @test neff == length(v)
         Σ = [1 1 0
              1 1 0
@@ -138,28 +144,28 @@ end
     #   N.B. use very large numbers to reduce sample variance
     @testset "AMISE with N = $N" for N in Int.((1e6, 1e7, 1e8))
         atol = (sqrt(eps(1.0)) / N) ^ (1 // 5)  # scale error similarly to AMISE
-        v = view(rv_norm_long, 1:N)
+        r = view(rv_norm_long, 1:N)
         t = G_amise(N, σ)
-        h = KDE.bandwidth(KDE.SilvermanBandwidth(), v, -6σ, 6σ, KDE.Open)
+        h = KDE.bandwidth(estim, r, -6σ, 6σ, KDE.Open)
         @test t ≈ h atol=atol
     end
 
     # Verify that the bandwidth estimator respects the lo/hi limits and excludes
     # out-of-bounds elements
-    v = view(rv_norm_long, 1:256)
-    h₀ = KDE.bandwidth(KDE.SilvermanBandwidth(), v, -6σ, 6σ, KDE.Closed)
-    h₁ = KDE.bandwidth(KDE.SilvermanBandwidth(), v, 0.0, 6σ, KDE.Closed)
-    let z = v, γ = (4 // 3length(z))^(1 // 5)
+    r = view(rv_norm_long, 1:256)
+    h₀ = KDE.bandwidth(estim, r, -6σ, 6σ, KDE.Closed)
+    h₁ = KDE.bandwidth(estim, r, 0.0, 6σ, KDE.Closed)
+    let z = r, γ = (4 // 3length(z))^(1 // 5)
         @test h₀ ≈ γ * std(z, corrected = false)
     end
-    let z = filter(>=(0), v), γ = (4 // 3length(z))^(1 // 5)
+    let z = filter(>=(0), r), γ = (4 // 3length(z))^(1 // 5)
         @test h₁ ≈ γ * std(z, corrected = false)
     end
 
     @testset "Unitful numbers" begin
-        σ = Quantity(rv_norm_σ, u"m")
-        v = Quantity.(view(rv_norm_long, 1:100), u"m")
-        @test (@inferred KDE.bandwidth(KDE.SilvermanBandwidth(), v, -6σ, 6σ, KDE.Open)) isa Float64
+        σ′ = Quantity(rv_norm_σ, u"m")
+        r′ = Quantity.(view(rv_norm_long, 1:100), u"m")
+        @test (@inferred KDE.bandwidth(estim, r′, -6σ′, 6σ′, KDE.Open)) isa Float64
     end
 end # Silverman Bandwidth
 
