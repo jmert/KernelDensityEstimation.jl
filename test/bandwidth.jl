@@ -167,6 +167,48 @@ end
         r′ = Quantity.(view(rv_norm_long, 1:100), u"m")
         @test (@inferred KDE.bandwidth(estim, r′, -6σ′, 6σ′, KDE.Open)) isa Float64
     end
+
+    # Test behavior under degenerate / exceptional cases
+    @testset "Degenerate Cases" begin
+        _, vvar = KDE._neff_covar((v,), lo(1), hi(1), nothing)
+        z = true  # placeholder for identically-zero elements due to begin LowerTriangular
+
+        # for uniform data where the the variance is zero...
+        neff1, uvar1 = KDE._neff_covar((u,), lo(1), hi(1), nothing)
+        @test neff1 == length(u)
+        @test iszero(uvar1)
+        # ...the bandwidth estimator always returns a non-zero value instead so that
+        # a finite gaussian can be generated
+        h = KDE.bandwidth(estim, u, 0.0, 2.0, KDE.Open)
+        @test h > 0
+        # and similar for 2x2 (where the covariance matrix is singular, with zero row/col
+        # corresponding to the uniform data)
+        neff, covar = KDE._neff_covar((u, v), lo(2), hi(2), nothing)
+        @test [0  0  ;
+               0 vvar] == covar
+        H = KDE.bandwidth(estim, (u, v), lo(2), hi(2), open(2))
+        @test [true   z  ;
+               true false] == isapprox.(H.L, 0.0, atol=sqrt(eps(1.0)))
+
+        # the covariance is singular as well when the data is perfectly correlated
+        # (as identical columns mean loss of rank)
+        #   2x2
+        neff, covar = KDE._neff_covar((v, v), lo(2), hi(2), nothing)
+        @test [vvar vvar;
+               vvar vvar] == covar
+        H = KDE.bandwidth(estim, (v, v), lo(2), hi(2), open(2))
+        @test [false  z  ;
+               false true] == isapprox.(H.L, 0.0, atol=sqrt(eps(1.0)))
+        #   3x3
+        neff, covar = KDE._neff_covar((v, u, v), lo(3), hi(3), nothing)
+        @test [vvar 0 vvar;
+                0   0   0 ;
+               vvar 0 vvar] == covar
+        H = KDE.bandwidth(estim, (v, u, v), lo(3), hi(3), open(3))
+        @test [false  z    z  ;
+               true  true  z  ;
+               false true true] == isapprox.(H.L, 0.0, atol=sqrt(eps(1.0)))
+    end
 end # Silverman Bandwidth
 
 @testset "ISJ Bandwidth" begin

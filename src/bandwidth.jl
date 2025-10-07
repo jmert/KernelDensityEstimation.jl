@@ -1,4 +1,4 @@
-import LinearAlgebra: Symmetric, cholesky!
+import LinearAlgebra: Symmetric, cholesky, cholesky!, isposdef
 
 # convenient wrapper for univariate inputs
 function bandwidth(estim::AbstractBandwidthEstimator,
@@ -156,11 +156,30 @@ function bandwidth(::SilvermanBandwidth,
     # Because a non-diagonal covariance matrix can be diagonalized via eigenvalue
     # decomposition, the scaling factor still applies:
     cov_scale = bw_scale ^ 2
-    # Σ .= ifelse.(iszero.(Σ), eps(cov_scale), Σ .* cov_scale)
+    # Σ *= cov_scale
     for jj in 1:N
         for kk in 1:N
-            Σ[kk, jj] = iszero(Σ[kk, jj]) ? eps(cov_scale) : Σ[kk, jj] * cov_scale
+            Σ[kk, jj] *= cov_scale
         end
+    end
+    C = cholesky(Symmetric(Σ, :L), check = false)
+    isposdef(C) && return C
+
+    # If the cholesky factorization failed, its presumably due to a degenerate case like
+    # zero variance in one of the directions or perfect correlation between two dimensions.
+    # Regularize the problem by adding a small perterbation to the diagonal of the
+    # covariance matrix, and then try again.
+
+    # ϵ = eps(maximum(Σ[diagind(Σ)]))
+    ϵ = floatmin(T)
+    for jj in 1:N
+        ϵ = max(ϵ, Σ[jj, jj])
+    end
+    ϵ = eps(ϵ)
+
+    # Σ .+= ϵ * I
+    for jj in 1:N
+        Σ[jj, jj] += ϵ
     end
     return cholesky!(Symmetric(Σ, :L))
 end
