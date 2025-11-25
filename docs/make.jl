@@ -16,6 +16,7 @@ bib = CitationBibliography(joinpath(@__DIR__, "src", "refs.bib");
                            style = :numeric)
 links = InterLinks(
     "Julia" => "https://docs.julialang.org/en/v1/",
+    "UnicodePlots" => "https://juliaplots.org/UnicodePlots.jl/stable/",
 )
 
 showcases = map(ff -> joinpath("showcase", ff),

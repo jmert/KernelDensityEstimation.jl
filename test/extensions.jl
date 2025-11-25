@@ -76,20 +76,56 @@ end
     end
 end
 
+
+@moduletestset "Plots" begin
+    using Plots
+
+    rv = rand(1000)
+    K = kde(rv, lo = 0.0, hi = 1.0, boundary = :closed)
+
+    # simply test that invocation is not an error
+    @test plot(K) isa Plots.Plot
+    @test plot(K, linetype = :steppre) isa Plots.Plot
+
+    # default labels are set
+    p = plot(K)
+    @test p[1][:xaxis][:guide] == "value"
+    @test p[1][:yaxis][:guide] == "density"
+end
+
+
 @moduletestset "UnicodePlots" begin
-    import UnicodePlots
+    using UnicodePlots
 
-    io = IOBuffer()
-    ht, wd = 50, 120
-    ioc = IOContext(io, :displaysize => (ht, wd))
+    K = kde(sqrt.(0:0.01:1), bandwidth = 0.5, boundary = :closed)
 
-    K = kde(collect(0:0.01:1), bandwidth = 0.5, boundary = :closed)
-    show(ioc, MIME"text/plain"(), K)
-    str = String(take!(io))
-
-    let S = split(str, '\n')
-        @test all(length(s) <= wd for s in S)
-        @test length(S) < ht
+    function termprint(x)
+        context = (:displaysize => (50, 120), :color => true)
+        return sprint(x; context) do io, obj
+            show(io, MIME"text/plain"(), obj)
+        end
     end
-    @test any(!isascii, str)
+
+    # generate an empty plot (to check that plotting is different from)
+    empty = termprint(Plot(Float64[], Float64[]; xlim = (0, 1), ylim = (0, 3)))
+
+    # plot from scratch
+    p1 = lineplot(K, color = :green)
+    str1 = termprint(p1)
+    @test str1 != empty
+    @test any(!isascii, str1)
+
+    # plot into a canvas
+    p2 = Plot(Float64[], Float64[]; xlim = (0, 1), ylim = (0, 3))
+    lineplot!(p2, K, color = :green)
+    str2 = termprint(p2)
+    @test str1 == str2
+    # change color and overplot, resulting in different (color!) plot
+    lineplot!(p2, K, color = :blue)
+    str3 = termprint(p2)
+    @test str3 != str2
+    # but contents are the same if the color information is stripped away
+    #  pattern based on https://en.wikipedia.org/wiki/ANSI_escape_code#Colors
+    stripcolor(s) = replace(s, r"\e\[(\d+;)*\d*m" => "")
+    @test stripcolor(str3) == stripcolor(str2)
 end

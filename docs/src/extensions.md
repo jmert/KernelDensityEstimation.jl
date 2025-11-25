@@ -89,21 +89,67 @@ nothing  # hide
 
 ![](ext_makie.svg)
 
-## [UnicodePlots.jl](@id ext-unicodeplots)
 
-For quick, approximate visualization of a density within the terminal, an extension is provided for the
-[`UnicodePlots.jl`](https://juliahub.com/ui/Packages/General/UnicodePlots)
-package.
-The three-argument `Base.show` method is defined to show the Unicode plot by default, so the distribution will be
-previewed at the REPL automatically.
+## [Plots.jl](@id ext-plots)
 
-```@example ext_unicodeplots
-using KernelDensityEstimation
-using UnicodePlots
+Plotting the [`UnivariateKDE`](@ref) object is natively supported within the
+[`Plots.jl`](https://juliahub.com/ui/Packages/General/Plots)
+ecosystem of backends by defining a plot recipe for `RecipesBase.jl`.
+
+The density estimate is interpreted by default as a `:line` series type with
+xlabel `"value"` and ylabel `"density"`.
+
+```@example ext_plots
+using KernelDensityEstimation: kde, LinearBinning
 using Random  # hide
 Random.seed!(100)  # hide
 
 # 500 samples from a Chisq(ν=4) distribution
 rv = dropdims(sum(abs2, randn(4, 500), dims=1), dims=1)
+nothing  # hide
+```
+
+```@example ext_plots
+using Plots
+
 K = kde(rv; lo = 0.0, boundary = :closedleft)
+H = kde(rv; lo = 0.0, boundary = :closedleft,
+            bwratio = 1.0, method = LinearBinning())
+
+plot(
+    plot(H, title = "stairs", seriestype = :stepmid),
+    plot(K, title = "lines", ylabel = nothing),
+    layout = (1, 2), size = (800, 300),
+    leftmargin = (2.5, :mm), bottommargin = (3.0, :mm),
+    link = :all, legend = false
+)
+
+savefig("ext_plots.svg")  # hide
+nothing  # hide
+```
+
+![](ext_plots.svg)
+
+
+## [UnicodePlots.jl](@id ext-unicodeplots)
+
+For quick, approximate visualization of a density within the terminal, an extension is provided for the
+[`UnicodePlots.jl`](https://juliahub.com/ui/Packages/General/UnicodePlots)
+package and extends the `lineplot` (and `lineplot!`) methods.
+
+```@example ext_unicodeplots
+using KernelDensityEstimation
+using Random  # hide
+Random.seed!(100)  # hide
+
+# 500 samples from a Chisq(ν=4) distribution
+rv = dropdims(sum(abs2, randn(4, 500), dims=1), dims=1)
+nothing  # hide
+```
+
+```@example ext_unicodeplots
+using UnicodePlots
+
+K = kde(rv; lo = 0.0, boundary = :closedleft)
+lineplot(K)
 ```

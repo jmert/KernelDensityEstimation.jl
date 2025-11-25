@@ -13,6 +13,18 @@ Depth = 2:2
 
 ## v0.8.0 — Unreleased
 
+- The [package extension](extensions.md#ext-unicodeplots) for
+  [`UnicodePlots.jl`](https://juliahub.com/ui/Packages/General/UnicodePlots)
+  no longer defines the 3-argument [`Base.show`](@extref Base.show-Tuple{IO, Any, Any}) method for the
+  [`UnivariateKDE`](@ref) type in favor of requiring the user to explicitly plot it in the terminal
+  with [`UnicodePlots.lineplot`](@extref)
+
+- The [package extension](extensions.md#ext-plots) for
+  [`RecipesBase.jl`](https://juliahub.com/ui/Packages/General/RecipesBase)
+  has been added to aid in plotting within the
+  [`Plots.jl`](https://juliahub.com/ui/Packages/General/Plots)
+  ecosystem.
+
 - Various changes to the interfaces and type definitions have been made to allow for future support of bivariate (and
   possibly multivariate) density estimates.
 
