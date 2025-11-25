@@ -1,6 +1,18 @@
-using Random
+macro moduletestset(name::Union{Symbol,String}, block)
+    testmod = Symbol(:Test, name, :Ext)
+    ex = quote
+        module $testmod
+            using KernelDensityEstimation, Test
+            const KDE = KernelDensityEstimation
+            @testset $name $block
+        end
+    end
+    ex.head = :toplevel
+    return esc(ex)
+end
 
-@testset "Distributions" begin
+
+@moduletestset "Distributions" begin
     using Distributions
 
     # some options to speed up the KDE algorithm for details we're not checking
@@ -33,7 +45,7 @@ using Random
     @test last(K.x) ≈ maximum(D) - step(K.x) / 2
 end
 
-@testset "Makie" begin
+@moduletestset "Makie" begin
     using CairoMakie
     using .Makie: plotfunc
     using Unitful
@@ -58,13 +70,13 @@ end
     # unitful handling was added in Makie v0.21
     if isdefined(Makie, :UnitfulConversion)
         # check that unitful KDEs plot as well
-        Ku = kde(rv .* 1u"m", lo = 0.0, hi = 1.0, boundary = :closed)
+        Ku = kde(rv .* 1Unitful.m, lo = 0.0, hi = 1.0, boundary = :closed)
         @test plot(Ku).plot isa Plot{lines}
         @test stairs(Ku).plot isa Plot{stairs}
     end
 end
 
-@testset "UnicodePlots" begin
+@moduletestset "UnicodePlots" begin
     import UnicodePlots
 
     io = IOBuffer()
