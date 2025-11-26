@@ -117,11 +117,20 @@ necessary.
 
 # Extended help
 
-The bandwidth `h` must be a unitless scalar for univariate (`N == 1`) densities, which is
-interpreted as the standard deviation of the Gaussian kernel.
-For multivariate (`N ≥ 2`) densities, `h` must be a (unitless)
-[`Cholesky`](@extref LinearAlgebra.Cholesky) factorization, which corresponds to the
-covariance of the multivariate Gaussian kernel.
+The bandwidth is the standard deviation of the Gaussian smoothing kernel.
+- For univariate (``N = 1``) densities, `h` must be a unitless scalar.
+- For multivariate (``N ≥ 2``) densities, `h` must be a (unitless)
+  [`Cholesky`](@extref LinearAlgebra.Cholesky) factorization of the corresponding
+  multivariate covariance matrix.
+
+  !!! hint
+
+      The lower-triangular Cholesky factor is used during kernel construction, so opting
+      for the lower-triangular symmetric form is suggested for multivariate estimator
+      implementations:
+      ```julia
+      h = cholesky(Symmetric(covariance, :L))
+      ```
 """
 function bandwidth end
 

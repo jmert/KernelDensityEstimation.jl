@@ -104,28 +104,31 @@ end
 """
     SilvermanBandwidth <: AbstractBandwidthEstimator
 
-Estimates the necessary bandwidth of data at coordinates
-``(\\symbf{v}_1, \\symbf{v}_2, \\ldots, \\symbf{v}_d)`` with weights ``\\symbf{w}``
-using Silverman's Rule for a Gaussian smoothing kernel:
+Estimates the necessary bandwidth of data at ``d``-dimensional coordinates
+``(𝒗_1, 𝒗_2, …, 𝒗_d)`` with weights ``𝒘`` using Silverman's Rule for a Gaussian smoothing
+kernel.
+
+For the univariate (``d = 1``) case:
 ```math
-    \\symbf{h} = \\left(\\frac{4}{(2 + d)n_\\mathrm{eff}}\\right)^{2/(4 + d)} \\symbf{Σ}
+    h = \\left(\\frac{4}{3n_\\mathrm{eff}}\\right)^{1/5} σ̂
 ```
-where ``d`` is the number of indepedent dimensions,
-``n_\\mathrm{eff}`` is the effective number of degrees of freedom of the data,
-and ``\\symbf{Σ}`` is its weighted sample covariance.
+where ``n_\\mathrm{eff}`` is the effective number of degrees of freedom of the data and
+``σ̂^2`` is its sample variance.
+
+In the multivariate case (``d ≥ 2``):
+```math
+    𝒉 = \\left(\\frac{4}{(2 + d)n_\\mathrm{eff}}\\right)^{1/(4 + d)} \\sqrt{𝜮̂}
+```
+where ``\\sqrt{𝜮̂}`` is a Cholesky decomposition of the weighted sample covariance.
 
 See also [`ISJBandwidth`](@ref)
 
 # Extended help
 
-In the univariate (``d = 1``) case, the bandwidth ``h = \\sqrt{\\symbf{h}_{11}}`` is
-proportional to the standard deviation rather than variance — see the interface
-description of [`bandwidth()`](@ref).
-
-The sample covariance and effective number of degrees of freedom are calculated using
+The sample (co)variance and effective number of degrees of freedom are calculated using
 weighted statistics, where the latter is defined to be Kish's effective sample size
-``n_\\mathrm{eff} = (\\sum_i w_i)^2 / \\sum_i w_i^2`` for weights ``w_i``.
-For uniform weights, this reduces to the length of the vector(s) ``\\symbf{v}_j``.
+``n_\\mathrm{eff} = (\\sum_i 𝒘_i)^2 / \\sum_i 𝒘_i^2``.
+For uniform weights, this reduces to the length of the vector(s) ``𝒗_j``.
 
 ## References
 - [Hansen2009](@citet)
