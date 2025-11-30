@@ -78,8 +78,9 @@ Legend(fig[2, 1], ax, orientation = :horizontal)
 
 save("getting_started_1.svg", fig)
 ```
+```@figure
 ![](getting_started_1.svg)
-
+```
 
 ## Densities with boundaries
 
@@ -116,7 +117,9 @@ Legend(fig[2, 1], ax, orientation = :horizontal)
 
 save("getting_started_unbound_unif.svg", fig)
 ```
+```@figure
 ![](getting_started_unbound_unif.svg)
+```
 
 We can inform the estimator that we expect a bounded distribution, and it will use that information to generate a
 more appropriate estimate.
@@ -146,7 +149,9 @@ Legend(fig[2, 1], ax, orientation = :horizontal)
 
 save("getting_started_limit_unif.svg", fig)
 ```
+```@figure
 ![](getting_started_limit_unif.svg)
+```
 
 Note that in addition to preventing the smearing of the density beyond the bounds of the known distribution, the
 density estimate with correct boundaries is also smoother than the unbounded estimate.
@@ -225,7 +230,9 @@ Legend(fig[2, 1], ax, orientation = :horizontal)
 
 save("getting_started_weighting.svg", fig)
 ```
+```@figure
 ![](getting_started_weighting.svg)
+```
 
 As expected, this shifts the resultant density estimate to the right, toward more positive values.
 

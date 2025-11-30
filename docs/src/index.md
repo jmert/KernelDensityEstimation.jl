@@ -75,7 +75,12 @@ kd_trunc = KD.kde(rv_trunc)
 nothing  # hide
 ```
 
+```@figure; htmllabel = "Figure 1"
 ![](example_kerneldensity.svg)
+
+Kernel density estimates for a full (left) and truncated (right) Gaussian samples as produced using the default
+settings from `KernelDensity.jl`.
+```
 
 !!! details "Plotting Code"
 
@@ -125,7 +130,12 @@ kde_trunc = KDE.kde(rv_trunc, lo = 0.0, boundary = :closedleft)
 nothing  # hide
 ```
 
+```@figure; htmllabel = "Figure 2"
 ![](example_kerneldensityestimation.svg)
+
+Kernel density estimates using the same data as Figure 1 but now processed with this package, including additional
+information about the truncated boundary (right).
+```
 
 !!! details "Plotting Code"
 

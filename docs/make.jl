@@ -3,6 +3,8 @@ using DocumenterCitations
 using DocumenterInterLinks
 using KernelDensityEstimation
 
+include("FigureExpander.jl")
+
 doctest = "--fix"  in ARGS ? :fix :
           "--test" in ARGS ? true :
           get(ENV, "CI", "false") == "true"
@@ -23,13 +25,16 @@ showcases = map(ff -> joinpath("showcase", ff),
                 filter!(endswith(".md"), readdir(joinpath(@__DIR__, "src", "showcase"))))
 
 makedocs(
-    format = Documenter.HTML(
-        mathengine = Documenter.MathJax3(),
-        assets = String[
-            "assets/citations.css",
-            "assets/overrides.css",
-        ],
-    ),
+    format = [
+        #Documenter.LaTeX(),
+        Documenter.HTML(
+            mathengine = Documenter.MathJax3(),
+            assets = String[
+                "assets/citations.css",
+                "assets/overrides.css",
+            ],
+        ),
+    ],
     sitename = "Kernel Density Estimation",
     authors = "Justin Willmert",
     pages = [

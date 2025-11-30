@@ -86,8 +86,9 @@ lines!(ax2, K)
 save("ext_makie.svg", current_figure())  # hide
 nothing  # hide
 ```
-
+```@figure
 ![](ext_makie.svg)
+```
 
 
 ## [Plots.jl](@id ext-plots)
@@ -124,11 +125,13 @@ plot(
     link = :all, legend = false
 )
 
-savefig("ext_plots.svg")  # hide
+withenv(() -> savefig("ext_plots.svg"), "GKSwstype" => "nul");  # hide
+closeall();  # hide
 nothing  # hide
 ```
-
+```@figure
 ![](ext_plots.svg)
+```
 
 
 ## [UnicodePlots.jl](@id ext-unicodeplots)
