@@ -5,6 +5,8 @@ For example, we document mathematical derivations or provide justification for s
 of the various algorithms used.
 A typical user of the package's public interface should be able to skip this section.
 
+- [Gaussian Truncation](gaussian_trunc.md)
+
 
 ## References
 
