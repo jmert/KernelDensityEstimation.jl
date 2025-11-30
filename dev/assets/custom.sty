@@ -1,0 +1,6 @@
+\RequirePackage{unicode-math}
+
+\RequirePackage{graphicx}
+\DeclareGraphicsRule{.svg}{pdf}{.pdf}{%
+    `inkscape --export-type=pdf -o \noexpand\OutputFile\space \noexpand\SourceFile%
+}
