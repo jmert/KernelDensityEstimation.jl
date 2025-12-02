@@ -5,6 +5,13 @@ using KernelDensityEstimation
 
 include("FigureExpander.jl")
 
+function mdglob(root)
+    return map(filter!(endswith(".md"), readdir(joinpath(@__DIR__, "src", root)))) do ff
+        joinpath(root, ff)
+    end
+end
+
+
 doctest = "--fix"  in ARGS ? :fix :
           "--test" in ARGS ? true :
           get(ENV, "CI", "false") == "true"
@@ -20,9 +27,6 @@ links = InterLinks(
     "Julia" => "https://docs.julialang.org/en/v1/",
     "UnicodePlots" => "https://juliaplots.org/UnicodePlots.jl/stable/",
 )
-
-showcases = map(ff -> joinpath("showcase", ff),
-                filter!(endswith(".md"), readdir(joinpath(@__DIR__, "src", "showcase"))))
 
 makedocs(
     format = [
@@ -42,10 +46,10 @@ makedocs(
         "userguide.md",
         "extensions.md",
         "explain.md",
-        hide("showcase.md", showcases),
+        hide("showcase.md", mdglob("showcase")),
         "api.md",
         "releasenotes.md",
-        "references.md",
+        hide("devdocs/index.md", mdglob("devdocs")),
     ],
     modules = [KernelDensityEstimation],
     doctest = doctest,
