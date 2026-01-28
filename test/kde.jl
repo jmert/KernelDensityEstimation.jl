@@ -450,3 +450,9 @@ end
         @test minimum(padding) == 2
     end
 end
+
+if isdefined(Test, :detect_closure_boxes)
+    @testset "Codegen quality" begin
+        @test length(Test.detect_closure_boxes(KDE)) == 0
+    end
+end

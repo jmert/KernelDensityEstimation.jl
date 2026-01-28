@@ -43,6 +43,11 @@ end
     K = kde(r; bounds = D, kws...)
     @test first(K.x) ≈ minimum(D) + step(K.x) / 2
     @test last(K.x) ≈ maximum(D) - step(K.x) / 2
+
+    if isdefined(Test, :detect_closure_boxes)
+        ext = Base.get_extension(KDE, :KDEDistributionsExt)
+        @test length(Test.detect_closure_boxes(ext)) == 0
+    end
 end
 
 @moduletestset "Makie" begin
@@ -74,6 +79,11 @@ end
         @test plot(Ku).plot isa Plot{lines}
         @test stairs(Ku).plot isa Plot{stairs}
     end
+
+    if isdefined(Test, :detect_closure_boxes)
+        ext = Base.get_extension(KDE, :KDEMakieExt)
+        @test length(Test.detect_closure_boxes(ext)) == 0
+    end
 end
 
 
@@ -91,6 +101,11 @@ end
     p = plot(K)
     @test p[1][:xaxis][:guide] == "value"
     @test p[1][:yaxis][:guide] == "density"
+
+    if isdefined(Test, :detect_closure_boxes)
+        ext = Base.get_extension(KDE, :KDERecipesBaseExt)
+        @test length(Test.detect_closure_boxes(ext)) == 0
+    end
 end
 
 
@@ -128,4 +143,9 @@ end
     #  pattern based on https://en.wikipedia.org/wiki/ANSI_escape_code#Colors
     stripcolor(s) = replace(s, r"\e\[(\d+;)*\d*m" => "")
     @test stripcolor(str3) == stripcolor(str2)
+
+    if isdefined(Test, :detect_closure_boxes)
+        ext = Base.get_extension(KDE, :KDEUnicodePlotsExt)
+        @test length(Test.detect_closure_boxes(ext)) == 0
+    end
 end
