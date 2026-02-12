@@ -202,11 +202,11 @@ The following properties are defined to supplement the fields of the underlying
 """
 const BivariateKDE{T,R,V} = MultivariateKDE{T,2,R,V}
 
-function BivariateKDE(x::AbstractRange, y::AbstractRange, v::AbstractVector)
+function BivariateKDE(x::AbstractRange, y::AbstractRange, v::AbstractMatrix)
     T = eltype(v)
     R = Tuple{typeof(x), typeof(y)}
     V = typeof(v)
-    return MultivariateKDE{T,1,R,V}((x, y), v)
+    return MultivariateKDE{T,2,R,V}((x, y), v)
 end
 
 Base.propertynames(::BivariateKDE) = (fieldnames(BivariateKDE)..., :x, :y, :f)
@@ -284,7 +284,7 @@ entrypoint parameters and some internal state variables.
 """
 mutable struct MultivariateKDEInfo{U,N,
                                    D<:Tuple{Vararg{Tuple{Ei,Ei,Boundary.T} where Ei,N}},
-                                   B<:Union{U,AbstractMatrix{U}},
+                                   B<:Union{U, Cholesky{U, <:AbstractMatrix{U}}},
                                    K<:MultivariateKDE{U,N}
                                   } <: AbstractKDEInfo{U,N}
     method::AbstractKDEMethod
@@ -316,7 +316,7 @@ function _mvtypeinfo_eltypes(eltypes::P) where {N,P<:NTuple{N,Type}}
         Tuple{Ei, Ei, Boundary.T}
     end
     # the bandwidth matrix and kernel are unitless
-    B = N == 1 ? U : Matrix{U}
+    B = N == 1 ? U : Cholesky{U, Matrix{U}}
     K = multivariate_type_from_axis_eltypes(ntuple(_ -> U, Val(N))...)
     return MultivariateKDEInfo{U,N,Tuple{D...},B,K}
 end
@@ -340,7 +340,7 @@ end
         T = _invunit(typeof(oneunit(E1) * oneunit(E2)))
         U = _unitless(T)
         D = Tuple{Tuple{E1, E1, Boundary.T}, Tuple{E2, E2, Boundary.T}}
-        B = Matrix{U}
+        B = Cholesky{U, Matrix{U}}
         K = multivariate_type_from_axis_eltypes(U, U)
         return MultivariateKDEInfo{U,2,D,B,K}
     end
