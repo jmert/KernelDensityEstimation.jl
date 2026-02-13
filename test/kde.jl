@@ -1,6 +1,6 @@
 using .KDE: estimate
 
-using LinearAlgebra: Symmetric, cholesky
+using LinearAlgebra: Cholesky, Symmetric, cholesky
 using Statistics: std
 using Random: Random, randn
 using Unitful
@@ -66,6 +66,33 @@ rv_norm_x = rv_norm_σ .* randn(Random.seed!(Random.default_rng(), 1234), 100)
     @test iterate(rest) === nothing
     x, y, f, rest... = K2t
     @test iterate(rest) === nothing
+
+    SIMPLE_TYPES = [
+        (Float32,), (Float64,),
+        (Float32, Float32,), (Float32, Float64,), (Float64, Float64,),
+        (Float32, Float32, Float32), (Float32, Float64, Float64), (Float64, Float64, Float64),
+    ]
+
+    @testset "MultivariateKDE[Info] of eltypes $eltypes" for eltypes in SIMPLE_TYPES
+        E = promote_type(eltypes...)
+        N = length(eltypes)
+
+        # N.B. check especially for concrete types!
+
+        # multivariate KDE objects
+        T = KDE.multivariate_type_from_axis_eltypes(eltypes...)
+        @test T <: KDE.MultivariateKDE{E,N}
+        @test Base.isconcretetype(T)
+        @test fieldtype(T, :axes) <: Tuple{map(e -> AbstractRange{e}, eltypes)...}
+        @test fieldtype(T, :density) <: Array{E,N}
+
+        # corresponding info structures
+        T = KDE.multivariateinfo_type_from_axis_eltypes(eltypes...)
+        @test T <: KDE.MultivariateKDEInfo{E,N}
+        @test Base.isconcretetype(T)
+        @test fieldtype(T, :bandwidth) <: Union{Nothing, (N == 1 ? E : Cholesky{E})}
+        @test fieldtype(T, :kernel) <: Union{Nothing, KDE.MultivariateKDE{E,N}}
+    end
 end
 
 @testset "Options Handling" begin
