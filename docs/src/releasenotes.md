@@ -32,7 +32,8 @@ Depth = 2:2
       [`bounds`](@ref) function, which has also impacted the built-in definitions and behaviors of the `bounds`
       methods.
 
-    - The signature of the [`bandwidth`](@ref) interface has been changed to support multidimensional data.
+    - The signatures of the [`bandwidth`](@ref) and [`estimate`](@ref) interfaces have been changed to support
+      multidimensional data.
       More notably, the returned bandwidth is now always a _unitless_ quantity (since a covariance matrix among
       axes with different units cannot have per-element units).
 

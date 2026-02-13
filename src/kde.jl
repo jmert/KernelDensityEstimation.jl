@@ -496,39 +496,67 @@ function init(method::K,
     if length(kwargs) > 0
         invokelatest(_warn_unused, kwargs)::Nothing
     end
-    return data, weights, info
+    return (data,), weights, info
 end
 
-function _domain_to_edgeranges(info::UnivariateKDEInfo)
-    lo, hi, bc = something(info.domain)[1]
-    bw = something(info.bandwidth) * oneunit(lo)
-    bwratio = something(info.bwratio)[1]
-    nbins = !isnothing(info.nbins) ? info.nbins[1] : nothing
+function _domain_to_edgeranges(info::MultivariateKDEInfo{U,N}) where {U,N}
+    domain = something(info.domain)
+    bwratio = something(info.bwratio)
+    nbins = info.nbins
 
-    # Expand the bounds if the bound(s) are open
-    lo -= (bc == Closed || bc == ClosedLeft) ? zero(lo) : 8bw
-    hi += (bc == Closed || bc == ClosedRight) ? zero(hi) : 8bw
+    # Extract the bandwidth, in a form useful to expanding the ranges of the coordinate
+    # axes. For the univariate case, this is trivial, but for multivariate densities, we
+    # must interpret the Gaussian covariance and project to the coordinate axes.
 
-    # Calculate the number of bins to use in the histogram
-    if isnothing(nbins)
-        nbins′ = max(1, round(Int, bwratio * (hi - lo) / bw))
+    bandwidth = if N == 1
+        # univariate case is a scalar
+        (something(info.bandwidth),)
+    elseif N == 2
+        # special-case 2D version of general case
+        L = something(info.bandwidth).L
+        (L[1, 1], hypot(L[2, 1], L[2, 2]))
     else
-        nbins′ = Int(nbins)
-        nbins′ > 0 || throw(ArgumentError("nbins must be a positive integer"))
+        # the bounding box coordinates {x_i} that contains the 1σ contour of the Gaussian
+        # is given by the expression
+        #   x_i = \sqrt{Σ_ii} = \sqrt{l_i ⋅ l_i}
+        # where l_i = L{ji} is the i-th row of the Cholesky lower factor matrix
+        L = something(info.bandwidth).L
+        ntuple(Val(N)) do ii
+            xmax_i = sqrt(sum(abs2, @view L[ii, :]))
+        end
     end
+    return ntuple(Val(N)) do ii
+        lo, hi, bc = domain[ii]
+        bw = bandwidth[ii] * oneunit(lo)
+        ratio = bwratio[ii]
 
-    r = LinRange(lo, hi, nbins′ + 1)
-    return r
+        # Expand the bounds if the bound(s) are open
+        lo -= (bc == Closed || bc == ClosedLeft) ? zero(lo) : 8bw
+        hi += (bc == Closed || bc == ClosedRight) ? zero(hi) : 8bw
+
+        # Calculate the number of bins to use in the histogram
+        if isnothing(nbins)
+            nbins′ = max(1, round(Int, ratio * (hi - lo) / bw))
+        else
+            nbins′ = Int(nbins[ii])
+            nbins′ > 0 || throw(ArgumentError("nbins must be a positive integer"))
+        end
+
+        return LinRange(lo, hi, nbins′ + 1)
+    end
 end
 
-function _edgerange_to_centers(edges::AbstractRange)
-    lo, hi = first(edges), last(edges)
-    if lo == hi
-        return range(lo, lo, length = 1)
-    else
-        nbins = length(edges) - 1
-        Δ = (hi - lo) / nbins / 2
-        return range(lo + Δ, hi - Δ, length = nbins)
+function _edgerange_to_centers(edges::Tuple{Vararg{AbstractRange,N}}) where {N}
+    return ntuple(Val(N)) do ii
+        edge = edges[ii]
+        lo, hi = first(edge), last(edge)
+        if lo == hi
+            return range(lo, lo, length = 1)
+        else
+            nbins = length(edge) - 1
+            Δ = (hi - lo) / nbins / 2
+            return range(lo + Δ, hi - Δ, length = nbins)
+        end
     end
 end
 
@@ -540,18 +568,24 @@ end
 estimator_order(::Type{<:AbstractBinningKDE}) = 0
 
 function estimate(method::AbstractBinningKDE,
-                  data::AbstractVector{T},
+                  data::Tuple{Vararg{AbstractVector{T}, N}},
                   weights::Union{Nothing, <:AbstractVector},
-                  info::UnivariateKDEInfo) where {T}
-
+                  info::MultivariateKDEInfo{U,N}) where {T,U,N}
     edges = _domain_to_edgeranges(info)
-    f = Histogramming._histogram(method, (data,), (edges,); weights)
+    f = Histogramming._histogram(method, data, edges; weights)
     centers = _edgerange_to_centers(edges)
-    estim = UnivariateKDE(centers, f)
 
-    info.kernel = let R = _unitless(T)
-        UnivariateKDE(range(zero(R), zero(R), length = 1), [one(R)])
-    end
+    # store the histogram as a density estimate
+    eltypes = map(eltype, data)
+    estim_type = multivariate_type_from_axis_eltypes(eltypes...)
+    estim = estim_type(centers, f)
+
+    # populate the info with a kronecker-delta kernel
+    eltypes_u = map(_unitless, eltypes)
+    kernel_type = multivariate_type_from_axis_eltypes(eltypes_u...)
+    kernel_axes = map(R -> range(zero(R), zero(R), length = 1), eltypes_u)
+    info.kernel = kernel_type(kernel_axes, ones(eltype(kernel_type), ntuple(_ -> 1, Val(N))...))
+
     return estim, info
 end
 
@@ -679,7 +713,7 @@ end
 estimator_order(::Type{<:BasicKDE}) = 1
 
 function estimate(method::BasicKDE,
-                  data::AbstractVector,
+                  data::Tuple{AbstractVector},
                   weights::Union{Nothing, <:AbstractVector},
                   info::UnivariateKDEInfo)
     binned, info = estimate(method.binning, data, weights, info)
@@ -727,7 +761,7 @@ end
 estimator_order(::Type{<:LinearBoundaryKDE}) = 1
 
 function estimate(method::LinearBoundaryKDE,
-                  data::AbstractVector,
+                  data::Tuple{AbstractVector},
                   weights::Union{Nothing, <:AbstractVector},
                   info::UnivariateKDEInfo)
     binned, info = estimate(method.binning, data, weights, info)
@@ -808,7 +842,7 @@ end
 estimator_order(::Type{<:MultiplicativeBiasKDE}) = 2
 
 function estimate(method::MultiplicativeBiasKDE,
-                  data::AbstractVector,
+                  data::Tuple{AbstractVector},
                   weights::Union{Nothing, <:AbstractVector},
                   info::UnivariateKDEInfo)
     binned, info = estimate(method.binning, data, weights, info)

@@ -65,13 +65,18 @@ Abstract supertype of kernel bandwidth estimation techniques.
 abstract type AbstractBandwidthEstimator end
 
 """
-    estim, info = estimate(method::AbstractKDEMethod, data::AbstractVector, weights::Union{Nothing, AbstractVector}; kwargs...)
-    estim, info = estimate(method::AbstractKDEMethod, data::AbstractKDE, info::AbstractKDEInfo; kwargs...)
+    estim, info = estimate(method::AbstractKDEMethod,
+                           data::Tuple{Vararg{AbstractVector,N}},
+                           weights::Union{Nothing, AbstractVector}; kwargs...) where {N}
+
+    estim, info = estimate(method::AbstractKDEMethod,
+                           data::AbstractKDE,
+                           info::AbstractKDEInfo; kwargs...)
 
 Apply the kernel density estimation algorithm `method` to the given data, either in the
-form of a vector of `data` (and optionally with corresponding vector of `weights`) or a
-prior density estimate and its corresponding pipeline `info` (to support being part of a
-processing pipeline).
+form of a tuple of vectors of `data` (and optionally with corresponding vector of `weights`)
+or a previously-processed density estimate and its corresponding `info` (to support being
+part of a processing pipeline).
 
 ## Returns
 

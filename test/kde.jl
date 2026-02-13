@@ -1,13 +1,13 @@
 using .KDE: estimate
 
-using LinearAlgebra: Cholesky, Symmetric, cholesky
+using LinearAlgebra: Cholesky, Diagonal, Symmetric, cholesky
 using Statistics: std
 using Random: Random, randn
 using Unitful
 
 _bounds(; lo = nothing, hi = nothing, bc = :open) = (lo, hi, bc)
 
-edges2centers = KDE._edgerange_to_centers
+edges2centers(r) = KDE._edgerange_to_centers((r,))[1]
 centers2edges(r) = (Δ = step(r) / 2; range(first(r) - Δ, last(r) + Δ, length = length(r) + 1))
 
 rv_norm_σ = 2.1
@@ -109,7 +109,7 @@ end
     ]
     method = KDE.LinearBinning()
 
-    RT = Tuple{Vector{Float64}, Nothing, KDE.UnivariateKDEInfo{Float64}}
+    RT = Tuple{Tuple{Vector{Float64}}, Nothing, KDE.UnivariateKDEInfo{Float64}}
     @testset "options = $kws" for kws in variations
         @test @inferred(init(method, [1.0]; kws...)) isa RT
     end
@@ -207,6 +207,59 @@ end
     @test_throws ArgumentError KDE.bounds(UnknownBoundsSpec(), (0.0, 1.0, :closed))
 end
 
+@testset "Direct estimates ($(N)D)" for N in 1:3
+    # By "direct", we mean that we bypass the init() step and call the appropriate
+    # estimate(method, data, weights, info) method.
+
+    @testset "$msg" for (msg, unit) in [("Unitless", 1.0), ("Unitful", 1.0u"m")]
+        # raw data
+        coords = unit .* [0.5, 1.5, 1.5, 2.5, 2.5, 2.5, 3.5, 3.5, 4.5]
+        samples = ntuple(_ -> coords, Val(N))
+        # units in density space
+        Tinvunit = typeof(inv(unit) ^ N)
+
+        # construct an info object
+        info_type = KDE.multivariateinfo_type_from_axis_eltypes(map(eltype, samples)...)
+        info = info_type(KDE.HistogramBinning())
+        # manually set properties that will normally be set by init()
+        info.bwratio = ntuple(_ -> 1, Val(N))
+        info.bandwidth = N == 1 ? 1.0 : cholesky(Matrix(Diagonal(ones(N))))
+
+        # use implicit uniform weight case
+        weights = nothing
+
+        @testset "Simple binning" begin
+            info.method = method = KDE.HistogramBinning()
+
+            ## closed domain
+            info.kernel = nothing
+            info.domain = ntuple(_ -> (0unit, 5unit, KDE.Closed), Val(N))
+            K, info = @inferred estimate(method, samples, weights, info)
+            # binned density has correct form
+            # N.B. no need to test the binning itself — already done in the histogram tests
+            @test K isa KDE.MultivariateKDE{Tinvunit,N}
+            @test all(step(a) == 1unit for a in K.axes)  # bwratio and bandwidth given, so step is fixed
+            @test all(extrema(a) == (0.5unit, 4.5unit) for a in K.axes)
+
+            # kronecker-delta kernel has been populated
+            @test info.kernel isa KDE.MultivariateKDE{Float64,N}
+            @test prod(length, info.kernel.axes) == 1
+            @test length(info.kernel.density) == 1
+
+
+            ## (mixed) half-open interval(s)
+            info.kernel = nothing
+            info.domain = ntuple(i -> (0unit, 5unit, i == 1 ? KDE.OpenRight : KDE.Closed), Val(N))
+            K, info = @inferred estimate(method, samples, weights, info)
+            @test all(step(a) == 1unit for a in K.axes)  # bwratio and bandwidth given, so step is fixed
+            @test extrema(K.axes[1]) == (0.5unit, 4.5unit + 8.0unit #= 2 × bandwidth=#)
+            if N > 1
+                @test all(extrema(a) == (0.5unit, 4.5unit) for a in K.axes[2:end])
+            end
+        end
+    end
+end
+
 @testset "Simple Binning" begin
     kws = (; bandwidth = KDE.SilvermanBandwidth(), bwratio = 1)
 
@@ -300,7 +353,7 @@ end
     wpositive = [1.0 + (x ≥ 0) for x in rv]
 
     # shortcut to avoid repeating ourselves...
-    _initinfo(args...; kwargs...) = KDE.init(KDE.BasicKDE(), args...; kwargs...)[3]
+    _initinfo(v, args...; kwargs...) = KDE.init(KDE.BasicKDE(), v, args...; kwargs...)[3]
 
     # using weight values
     @test _initinfo(rv).neffective === Nlen
