@@ -109,11 +109,7 @@ function _mvtype_eltypes(eltypes::P) where {N, P<:NTuple{N,Type}}
 end
 
 function _show_mvtype(io, K::MultivariateKDE{T, N}) where {T, N}
-    if isdefined(Base, :ispublic)
-        print(io, MultivariateKDE, '{', T, ", ", N, '}')
-    else
-        print(io, typeof(K))
-    end
+    print(io, MultivariateKDE, '{', T, ", ", N, '}')
 end
 _show_mvaxes(io, K::MultivariateKDE) = show(io, K.axes)
 function Base.show(io::IO, K::MultivariateKDE{T,N}) where {T,N}
@@ -173,7 +169,7 @@ function _show_mvtype(io, K::UnivariateKDE{T, N}) where {T, N}
     if isdefined(Base, :ispublic)
         print(io, UnivariateKDE, '{', T, '}')
     else
-        print(io, typeof(K))
+        print(io, MultivariateKDE, '{', T, ", 1}")
     end
 end
 _show_mvaxes(io, K::UnivariateKDE{T}) where {T} = show(io, K.x)
@@ -222,7 +218,7 @@ function _show_mvtype(io, K::BivariateKDE{T, N}) where {T, N}
     if isdefined(Base, :ispublic)
         print(io, BivariateKDE, '{', T, '}')
     else
-        print(io, typeof(K))
+        print(io, MultivariateKDE, '{', T, ", 2}")
     end
 end
 _show_mvaxes(io, K::BivariateKDE{T}) where {T} = (show(io, K.x); print(io, ", "); show(io, K.y))
@@ -350,11 +346,7 @@ end
 
 
 function _show_mvinfotype(io, info::MultivariateKDEInfo{T,N}) where {T,N}
-    if isdefined(Base, :ispublic)
-        print(io, MultivariateKDEInfo, '{', T, ", ", N, '}')
-    else
-        print(io, typeof(info))
-    end
+    print(io, MultivariateKDEInfo, '{', T, ", ", N, '}')
 end
 
 function Base.show(io::IO, info::MultivariateKDEInfo)
@@ -403,7 +395,7 @@ function _show_mvinfotype(io, info::UnivariateKDEInfo{U}) where {U}
     if isdefined(Base, :ispublic)
         print(io, UnivariateKDEInfo, '{', U, '}')
     else
-        print(io, typeof(info))
+        print(io, MultivariateKDEInfo, '{', U, ", 1}")
     end
 end
 
@@ -418,7 +410,7 @@ function _show_mvinfotype(io, info::BivariateKDEInfo{U}) where {U}
     if isdefined(Base, :ispublic)
         print(io, BivariateKDEInfo, '{', U, '}')
     else
-        print(io, typeof(info))
+        print(io, MultivariateKDEInfo, '{', U, ", 2}")
     end
 end
 

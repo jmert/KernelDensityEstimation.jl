@@ -426,11 +426,27 @@ end
     end
 end
 
-@testset "Show" begin
-    K, info = estimate(KDE.BasicKDE(), rv_norm_x)
+@testset "Show ($(N)D)" for N in 1:3
+    typename = N == 1 ? "UnivariateKDE" :
+               N == 2 ? "BivariateKDE" :
+               "MultivariateKDE"
+
+    axes = ((-10:0.01:10 for _ in 1:N)...,)
+    dims = ((25 for _ in 1:N)...,)
+
+    K = KDE.MultivariateKDE(axes, randn(dims...))
+    infoT = KDE.multivariateinfo_type_from_axis_eltypes(map(eltype, axes)...)
+    info = infoT(KDE.BasicKDE())
+    info.bwratio = ((8.0 for _ in 1:N)...,)
+    info.bandwidth_alg = KDE.SilvermanBandwidth()
+    info.nbins = dims
+    info.neffective = prod(dims)
+    info.kernel = KDE.MultivariateKDE(((range(0.0, 0.0, length=1) for _ in 1:N)...,),
+                                      fill(1.0, (1 for _ in 1:N)...))
+
     buf = IOBuffer()
 
-    @testset "UnivariateKDE" begin
+    @testset "$(typename)" begin
         # Check that compact-mode printing is shorter than full printing
         show(IOContext(buf, :compact => true), K)
         shortmsg = String(take!(buf))
@@ -446,17 +462,18 @@ end
         @test length(shortmsg) < length(limitlongmsg)
         @test length(limitlongmsg) < length(longmsg)
 
-        # Verify the headers appear as expected --- the expected header is the shorter
-        # alias only after the `public` feature was added
-        type_expect = isdefined(Base, :ispublic) ? "UnivariateKDE{Float64}" :
-                                                   "MultivariateKDE{Float64, 1,"
-        @test occursin(type_expect, shortmsg)
-        @test occursin(type_expect, limitlongmsg)
+        # Verify the headers appear as expected --- the expected header is the alias name
+        # only after the `public` feature was added
+        longname = "MultivariateKDE{Float64, $N}"
+        shortname = N >= 3 || !isdefined(Base, :ispublic) ? longname : "$(typename){Float64}"
+
+        @test occursin(shortname, shortmsg)
+        @test occursin(shortname, limitlongmsg)
         fulltype = sprint(show, typeof(K), context = IOContext(buf, :limit => false, :compact => false))
         @test occursin(fulltype, longmsg)  # full parametric typing
     end
 
-    @testset "UnivariateKDEInfo" begin
+    @testset "$(typename)Info" begin
         # Check that compact-mode printing is shorter than full printing
         show(IOContext(buf, :compact => true), info)
         shortmsg = String(take!(buf))
@@ -472,12 +489,13 @@ end
         @test length(shortmsg) < length(limitlongmsg)
         @test length(limitlongmsg) < length(longmsg)
 
-        # Verify the headers appear as expected --- the expected header is the shorter
-        # alias only after the `public` feature was added
-        type_expect = isdefined(Base, :ispublic) ? "UnivariateKDEInfo{Float64}" :
-                                                   "MultivariateKDEInfo{Float64, 1,"
-        @test occursin(type_expect, shortmsg)
-        @test occursin(type_expect, limitlongmsg)
+        # Verify the headers appear as expected --- the expected header is the alias name
+        # only after the `public` feature was added
+        longname = "MultivariateKDEInfo{Float64, $N}"
+        shortname = N >= 3 || !isdefined(Base, :ispublic) ? longname : "$(typename)Info{Float64}"
+
+        @test occursin(shortname, shortmsg)
+        @test occursin(shortname, limitlongmsg)
         fulltype = sprint(show, typeof(info), context = IOContext(buf, :limit => false, :compact => false))
         @test occursin(fulltype, longmsg)  # full parametric typing
 
@@ -488,7 +506,7 @@ end
         plines = split(strip(pretty), '\n')
         header = popfirst!(plines)
         # heading line contains type info
-        @test occursin(type_expect, header)
+        @test occursin(shortname, header)
         # fields are then properly padded
         alignment = map(l -> findfirst(==(':'), l), plines)
         @test all(==(alignment[1]), alignment)
