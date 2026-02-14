@@ -1,5 +1,6 @@
 using .KDE: estimate
 
+using LinearAlgebra: Symmetric, cholesky
 using Statistics: std
 using Random: Random, randn
 using Unitful
@@ -308,6 +309,48 @@ end
     # weighted twice as much
     Kp = kde(rv, weights = wpositive)
     @test sum(K1.x .* K1.f) < sum(Kp.x .* Kp.f)
+end
+
+@testset "Gaussian Kernel" begin
+    x_odd = range(-6.0, 6.0, length = 501)
+    x_even = range(-6.0, 6.0, length = 500)
+
+    σ = sqrt(2.0π)
+    C1 = cholesky(Symmetric(π .* fill(2.0, 1, 1), :L))
+    C2 = cholesky(Symmetric(π .* [2.0 0.5; 0.5 1.0], :L))
+    ϵ = eps(σ)^(3/4)
+
+    # verify that specialized implementations agree with the general case
+    GenericT = Tuple{NTuple{N, StepRangeLen}, Cholesky} where {N}
+    # 1D specalization - s = scalar, 1 = generic 1, o = odd
+    gso = KDE.kernel_gaussian(x_odd, (σ,))
+    g1o = invoke(KDE.kernel_gaussian, GenericT, (x_odd,), C1)
+    @test gso ≈ g1o rtol=ϵ
+    # 1D specialization - s = scalar, 1 = generic, e = even
+    gse = KDE.kernel_gaussian(x_even, (σ,))
+    g1e = invoke(KDE.kernel_gaussian, GenericT, (x_even,), C1)
+    @test gse ≈ g1e rtol=ϵ
+    # 2D specalization - d = double, 2 = generic, o = odd
+    gdo = KDE.kernel_gaussian((x_odd, x_odd), C2)
+    g2e = invoke(KDE.kernel_gaussian, GenericT, (x_odd, x_odd), C2)
+    @test gdo ≈ g2e rtol=ϵ
+    # 2D specalization - d = double, 2 = generic, e = even
+    gde = KDE.kernel_gaussian((x_even, x_even), C2)
+    g2e = invoke(KDE.kernel_gaussian, GenericT, (x_even, x_even), C2)
+    @test gde ≈ g2e rtol=ϵ
+
+    # everything should be mass normalized properly (implicitly true between specialized
+    # and generic implementations already if elementwise checks pass)
+    @test sum(gso) ≈ 1.0
+    @test sum(gse) ≈ 1.0
+    @test sum(gdo) ≈ 1.0
+    @test sum(gde) ≈ 1.0
+
+
+    # 2D specialization checks that the cholesky matrix is 2x2
+    @test_throws DimensionMismatch KDE.kernel_gaussian((x_odd, x_odd), C1)
+    # generic version also checks that the choleksy matrix is appropriately sized
+    @test_throws DimensionMismatch KDE.kernel_gaussian((x_odd, x_odd, x_even), C2)
 end
 
 @testset "Basic Kernel Density Estimate" begin
