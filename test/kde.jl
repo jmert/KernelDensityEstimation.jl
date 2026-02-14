@@ -243,6 +243,7 @@ end
 
             # kronecker-delta kernel has been populated
             @test info.kernel isa KDE.MultivariateKDE{Float64,N}
+            @test sum(info.kernel.density) == 1.0
             @test prod(length, info.kernel.axes) == 1
             @test length(info.kernel.density) == 1
 
@@ -256,6 +257,23 @@ end
             if N > 1
                 @test all(extrema(a) == (0.5unit, 4.5unit) for a in K.axes[2:end])
             end
+        end
+
+        @testset "Basic density" begin
+            info.method = method = KDE.BasicKDE()
+
+            ## open domain
+            info.kernel = nothing
+            info.domain = ntuple(_ -> (0unit, 5unit, KDE.Closed), Val(N))
+            K, info = @inferred estimate(method, samples, weights, info)
+            # binned density has correct form
+            @test K isa KDE.MultivariateKDE{Tinvunit,N}
+            @test all(step(a) == 1unit for a in K.axes)  # bwratio and bandwidth given, so step is fixed
+            #@test all(extrema(a) == (0.5unit, 4.5unit) for a in K.axes)
+            # gaussian density has been populated
+            @test info.kernel isa KDE.MultivariateKDE{Float64,N}
+            @test sum(info.kernel.density) ≈ 1.0
+            @test size(info.kernel.density) == ntuple(_ -> 2#=sided=# * 4#=sigma=# + 1, Val(N))
         end
     end
 end
@@ -411,11 +429,11 @@ end
     # verify that specialized implementations agree with the general case
     GenericT = Tuple{NTuple{N, StepRangeLen}, Cholesky} where {N}
     # 1D specalization - s = scalar, 1 = generic 1, o = odd
-    gso = KDE.kernel_gaussian(x_odd, (σ,))
+    gso = KDE.kernel_gaussian((x_odd,), σ)
     g1o = invoke(KDE.kernel_gaussian, GenericT, (x_odd,), C1)
     @test gso ≈ g1o rtol=ϵ
     # 1D specialization - s = scalar, 1 = generic, e = even
-    gse = KDE.kernel_gaussian(x_even, (σ,))
+    gse = KDE.kernel_gaussian((x_even,), σ)
     g1e = invoke(KDE.kernel_gaussian, GenericT, (x_even,), C1)
     @test gse ≈ g1e rtol=ϵ
     # 2D specalization - d = double, 2 = generic, o = odd

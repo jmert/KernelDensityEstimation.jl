@@ -499,35 +499,42 @@ function init(method::K,
     return (data,), weights, info
 end
 
-function _domain_to_edgeranges(info::MultivariateKDEInfo{U,N}) where {U,N}
-    domain = something(info.domain)
-    bwratio = something(info.bwratio)
-    nbins = info.nbins
 
+function _bandwidth_bbox(info::MultivariateKDEInfo{U,N}) where {U,N}
     # Extract the bandwidth, in a form useful to expanding the ranges of the coordinate
     # axes. For the univariate case, this is trivial, but for multivariate densities, we
     # must interpret the Gaussian covariance and project to the coordinate axes.
 
-    bandwidth = if N == 1
+    bandwidth = something(info.bandwidth)
+    bbox = if N == 1
         # univariate case is a scalar
-        (something(info.bandwidth),)
+        (bandwidth,)
     elseif N == 2
         # special-case 2D version of general case
-        L = something(info.bandwidth).L
+        L = bandwidth.L
         (L[1, 1], hypot(L[2, 1], L[2, 2]))
     else
         # the bounding box coordinates {x_i} that contains the 1σ contour of the Gaussian
         # is given by the expression
         #   x_i = \sqrt{Σ_ii} = \sqrt{l_i ⋅ l_i}
         # where l_i = L{ji} is the i-th row of the Cholesky lower factor matrix
-        L = something(info.bandwidth).L
+        L = bandwidth.L
         ntuple(Val(N)) do ii
             xmax_i = sqrt(sum(abs2, @view L[ii, :]))
         end
     end
+    return bandwidth, bbox
+end
+
+function _domain_to_edgeranges(info::MultivariateKDEInfo{U,N}) where {U,N}
+    domain = something(info.domain)
+    bwratio = something(info.bwratio)
+    nbins = info.nbins
+    _, bbox = _bandwidth_bbox(info)
+
     return ntuple(Val(N)) do ii
         lo, hi, bc = domain[ii]
-        bw = bandwidth[ii] * oneunit(lo)
+        bw = bbox[ii] * oneunit(lo)
         ratio = bwratio[ii]
 
         # Expand the bounds if the bound(s) are open
@@ -591,7 +598,7 @@ end
 
 
 # specialized 1D case
-function kernel_gaussian(x::StepRangeLen, (σ,)::Tuple)
+function kernel_gaussian((x,)::Tuple{StepRangeLen}, σ)
     # N.B. Mathematically normalizing the kernel with the expected factor of
     #          Δx / σ / sqrt(2T(π))
     #      breaks down when σ << Δx. Instead of trying to work around that, take the easy
@@ -713,28 +720,29 @@ end
 estimator_order(::Type{<:BasicKDE}) = 1
 
 function estimate(method::BasicKDE,
-                  data::Tuple{AbstractVector},
+                  data::Tuple{Vararg{AbstractVector,N}},
                   weights::Union{Nothing, <:AbstractVector},
-                  info::UnivariateKDEInfo)
+                  info::MultivariateKDEInfo{U,N}) where {U,N}
     binned, info = estimate(method.binning, data, weights, info)
     return estimate(method, binned, info)
 end
-function estimate(::BasicKDE, binned::UnivariateKDE, info::UnivariateKDEInfo)
-    x, f = binned
-    T = _invunit(eltype(x))
-    bw = something(info.bandwidth)
-    Δx = step(x) * oneunit(T)
 
-    # make sure the kernel axis is centered on zero
-    nn = ceil(Int, 4bw / Δx)
-    xx = range(-nn * Δx, nn * Δx, step = Δx)
+function estimate(::BasicKDE, binned::MultivariateKDE{T,N}, info::MultivariateKDEInfo{U,N}) where {T,U,N}
+    ax = binned.axes
+    f = binned.density
 
-    kernel = kernel_gaussian(xx, (bw,))
-    info.kernel = UnivariateKDE(xx, kernel)
+    bw, bbox = _bandwidth_bbox(info)
+    xx = ntuple(Val(N)) do ii
+        Δx = step(ax[ii]) * oneunit(_invunit(eltype(ax[ii])))
+        nn = ceil(Int, 4bbox[ii] / Δx)
+        range(-nn * Δx, nn * Δx, step = Δx)
+    end
 
-    # convolve the data with the kernel to construct a density estimate
+    kernel = kernel_gaussian(xx, bw)
+    info.kernel = MultivariateKDE(xx, kernel)
+
     f̂ = conv(f, kernel, ConvShape.SAME)
-    estim = UnivariateKDE(x, f̂)
+    estim = MultivariateKDE(ax, f̂)
     return estim, info
 end
 
