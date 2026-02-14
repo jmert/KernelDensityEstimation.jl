@@ -155,12 +155,13 @@ The following properties are defined to supplement the fields of the underlying
 """
 const UnivariateKDE{T,R,V} = MultivariateKDE{T,1,Tuple{R},V}
 
-function UnivariateKDE(x::AbstractRange, v::AbstractVector)
+function UnivariateKDE(x::Tuple{AbstractRange}, v::AbstractVector)
     T = eltype(v)
-    R = Tuple{typeof(x)}
+    R = typeof(x)
     V = typeof(v)
-    return MultivariateKDE{T,1,R,V}((x,), v)
+    return MultivariateKDE{T,1,R,V}(x, v)
 end
+UnivariateKDE(x::AbstractRange, v::AbstractVector) = UnivariateKDE((x,), v)
 
 Base.propertynames(::UnivariateKDE) = (fieldnames(UnivariateKDE)..., :x, :f)
 function Base.getproperty(K::UnivariateKDE, sym::Symbol)
@@ -182,8 +183,8 @@ _show_mvaxes(io, K::UnivariateKDE{T}) where {T} = show(io, K.x)
 #   until Julia 1.8, so include this for more convenient use in older Julia versions
 Base.iterate(estim::UnivariateKDE) = iterate(estim, Val(:x))
 Base.iterate(estim::UnivariateKDE, ::Val{:x}) = (estim.x, Val(:f))
-Base.iterate(estim::UnivariateKDE, ::Val{:f}) = (estim.f, nothing)
-Base.iterate(::UnivariateKDE, ::Any) = nothing
+Base.iterate(estim::UnivariateKDE, ::Val{:f}) = (estim.f, Val(:done))
+Base.iterate(estim::UnivariateKDE, ::Val{:done}) = nothing
 
 
 """
@@ -202,12 +203,13 @@ The following properties are defined to supplement the fields of the underlying
 """
 const BivariateKDE{T,R,V} = MultivariateKDE{T,2,R,V}
 
-function BivariateKDE(x::AbstractRange, y::AbstractRange, v::AbstractMatrix)
+function BivariateKDE(xy::Tuple{AbstractRange,AbstractRange}, v::AbstractMatrix)
     T = eltype(v)
-    R = Tuple{typeof(x), typeof(y)}
+    R = typeof(xy)
     V = typeof(v)
-    return MultivariateKDE{T,2,R,V}((x, y), v)
+    return MultivariateKDE{T,2,R,V}(xy, v)
 end
+BivariateKDE(x::AbstractRange, y::AbstractRange, v::AbstractMatrix) = BivariateKDE((x, y), v)
 
 Base.propertynames(::BivariateKDE) = (fieldnames(BivariateKDE)..., :x, :y, :f)
 function Base.getproperty(K::BivariateKDE, sym::Symbol)
@@ -228,8 +230,8 @@ _show_mvaxes(io, K::BivariateKDE{T}) where {T} = (show(io, K.x); print(io, ", ")
 Base.iterate(estim::BivariateKDE) = iterate(estim, Val(:x))
 Base.iterate(estim::BivariateKDE, ::Val{:x}) = (estim.x, Val(:y))
 Base.iterate(estim::BivariateKDE, ::Val{:y}) = (estim.y, Val(:f))
-Base.iterate(estim::BivariateKDE, ::Val{:f}) = (estim.f, nothing)
-Base.iterate(::BivariateKDE, ::Any) = nothing
+Base.iterate(estim::BivariateKDE, ::Val{:f}) = (estim.f, Val(:done))
+Base.iterate(estim::BivariateKDE, ::Val{:done}) = nothing
 
 
 """

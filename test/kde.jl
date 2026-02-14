@@ -13,11 +13,58 @@ rv_norm_σ = 2.1
 rv_norm_x = rv_norm_σ .* randn(Random.seed!(Random.default_rng(), 1234), 100)
 
 @testset "Interface" begin
+    # eltype and ndims inherited from AbstractKDE definition
     @test eltype(KDE.UnivariateKDE{Float32}) == Float32
-    @test ndims(KDE.UnivariateKDE{Float32}) == 1
-
     @test eltype(KDE.BivariateKDE{Int}) == Int
+    @test eltype(KDE.MultivariateKDE{BigFloat,3}) == BigFloat
+    @test eltype(KDE.AbstractKDE{Float64,6}) == Float64
+    @test ndims(KDE.UnivariateKDE{Float32}) == 1
     @test ndims(KDE.BivariateKDE{Int}) == 2
+    @test ndims(KDE.MultivariateKDE{BigFloat,3}) == 3
+    @test ndims(KDE.AbstractKDE{Float64,6}) == 6
+
+    # instances are constructible - all with tuples of axes and density array
+    K1t = KDE.UnivariateKDE((0.0:1.0,), zeros(1))
+    K2t = KDE.BivariateKDE((0.0:1.0, 0.0:1.0,), zeros(1, 1))
+    K3t = KDE.MultivariateKDE((0.0:1.0, 0.0:1.0, 0.0:1.0), zeros(1, 1, 1))
+    # and uni-/bivariate with second construct that does not require the tuples
+    K1d = KDE.UnivariateKDE(0.0:1.0, zeros(1))
+    K2d = KDE.BivariateKDE(0.0:1.0, 0.0:1.0, zeros(1, 1))
+
+
+    # base property list is just the field list
+    pp = Set([:axes, :density])
+    @test Set(propertynames(K3t)) == pp
+    # and uni-/bivariate add extra convenience shortcuts
+    @test Set(propertynames(K1t)) == pp ∪ Set((:x, :f))
+    @test Set(propertynames(K2t)) == pp ∪ Set((:x, :y, :f))
+
+    # getproperty then works inferrably for all of these options (when used syntactically
+    # as `a.b`, not `getproperty(a, :b)` where getting can be dynamic).
+    # @inferred requires a function call, so wrap property access in a wrapper function.
+    @inline getaxes(K) = K.axes
+    @test @inferred(getaxes(K1t)) isa NTuple{1, StepRangeLen}
+    @test @inferred(getaxes(K2t)) isa NTuple{2, StepRangeLen}
+    @test @inferred(getaxes(K3t)) isa NTuple{3, StepRangeLen}
+    @inline getdensity(K) = K.density
+    @test @inferred(getdensity(K1t)) isa Array{Float64, 1}
+    @test @inferred(getdensity(K2t)) isa Array{Float64, 2}
+    @test @inferred(getdensity(K3t)) isa Array{Float64, 3}
+    @inline getf(K) = K.f
+    @test @inferred(getf(K1t)) isa Array{Float64, 1}
+    @test @inferred(getf(K2t)) isa Array{Float64, 2}
+    @inline getx(K) = K.x
+    @test @inferred(getx(K1t)) isa StepRangeLen
+    @test @inferred(getx(K2t)) isa StepRangeLen
+    @inline gety(K) = K.y
+    @test @inferred(gety(K2t)) isa StepRangeLen
+
+    # uni-/bivariate structures can be iterates to unpack their axes and density (to
+    # facilitate unpacking before Julia v1.8 where property destructuring was added)
+    x, f, rest... = K1t
+    @test iterate(rest) === nothing
+    x, y, f, rest... = K2t
+    @test iterate(rest) === nothing
 end
 
 @testset "Options Handling" begin
