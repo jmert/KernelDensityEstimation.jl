@@ -138,7 +138,6 @@ __hist_eltype(eltypes) = _invunit(typeof(mapreduce(oneunit, *, eltypes)))
 _hist_eltype(edges::Tuple{Vararg{AbstractRange}}) = __hist_eltype(map(eltype, edges))
 _hist_eltype(edges::Tuple{Vararg{HistEdge}}) = __hist_eltype(map(eltype, edges))
 
-_hist_size(edges::Tuple{Vararg{AbstractRange}}) = map(e -> length(e) - 1, edges)
 _hist_size(edges::Tuple{Vararg{HistEdge}}) = map(e -> e.nbin, edges)
 
 function _histogram(binning::AbstractBinningKDE,
