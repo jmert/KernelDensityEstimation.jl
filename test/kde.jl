@@ -112,6 +112,8 @@ end
         @test_throws(ArgumentError(match"Invalid [^\s]+ bound: `(hi|lo) = .*?`"r),
                      KDE.bounds(Float64[], (bnds..., nothing)))
     end
+    @test_throws(ArgumentError(match"Cannot infer boundary conditions with unspecified limits.*"r),
+                 KDE.bounds(Float64[], (nothing, nothing, nothing)))
 
 
     v = [1.0, 2.0]
@@ -170,6 +172,12 @@ end
                kde([1.0]; method = M, bounds = (0.0, 1.0, :open), hi = 2.0, bandwidth = 1.0))
     @test_logs((:warn, "Keyword `bounds` is overriding non-nothing `lo`, `hi`, and/or `boundary`."),
                kde([1.0]; method = M, bounds = (0.0, 1.0, :open), boundary = :closed, bandwidth = 1.0))
+
+
+    # argument error for unknown specifications rather than a method error
+    struct UnknownBoundsSpec end
+    @test_throws ArgumentError KDE.bounds(v, UnknownBoundsSpec())
+    @test_throws ArgumentError KDE.bounds(UnknownBoundsSpec(), (0.0, 1.0, :closed))
 end
 
 @testset "Simple Binning" begin
