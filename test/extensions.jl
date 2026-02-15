@@ -20,7 +20,7 @@ end
 
     D = Normal(0.0, 1.0)
     r = rand(D, 100)
-    lo, hi, bc = KDE.bounds(r, D)
+    lo, hi, bc = KDE.bounds((r,), D)[1]
     @test bc == KDE.Open
     @test (lo, hi) == extrema(r)
     K = kde(r; bounds = D, kws...)
@@ -28,7 +28,7 @@ end
 
     D = Exponential(1.0)
     r = rand(D, 100)
-    lo, hi, bc = KDE.bounds(r, D)
+    lo, hi, bc = KDE.bounds((r,), D)[1]
     @test bc == KDE.ClosedLeft
     @test (lo, hi) == (minimum(D), maximum(r))
     K = kde(r; bounds = D, kws...)
@@ -37,7 +37,7 @@ end
 
     D = Uniform(2.0, 10.0)
     r = rand(D, 100)
-    lo, hi, bc = KDE.bounds(r, D)
+    lo, hi, bc = KDE.bounds((r,), D)[1]
     @test bc == KDE.Closed
     @test (lo, hi) == extrema(D)
     K = kde(r; bounds = D, kws...)

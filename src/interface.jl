@@ -96,10 +96,12 @@ bandwidth-dependent biases of the order ``\\mathcal{O}(h^{2p})``.
 function estimator_order end
 
 """
-    lo, hi, bc = bounds(x, spec)
+    domain = bounds(xs::NTuple{N,AbstractVector}, spec) where {N}
 
-Determine the appropriate interval from `lo` to `hi` with boundary condition `bc` given
-the data vector `x` and bounds specification `spec`.
+Determine the appropriate `domain` (lower and upper bounds and boundary condition in each
+dimension) given the data vectors `xs` and bounds specification `spec`. The returned value
+must be an `N`-tuple, containing tuple elements of the form
+`(lo::Real, hi::Real, bc::Boundary.T)`.
 
 Packages may specialize this method on the `spec` argument to modify the behavior of
 the interval and boundary refinement for new argument types.

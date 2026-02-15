@@ -5,7 +5,7 @@ using Statistics: std
 using Random: Random, randn
 using Unitful
 
-_bounds(; lo = nothing, hi = nothing, bc = :open) = (lo, hi, bc)
+_bounds(; lo = nothing, hi = nothing, bc = :open) = ((lo, hi, bc),)
 
 edges2centers(r) = KDE._edgerange_to_centers((r,))[1]
 centers2edges(r) = (Δ = step(r) / 2; range(first(r) - Δ, last(r) + Δ, length = length(r) + 1))
@@ -99,7 +99,7 @@ end
     import .KDE: init
 
     # Make sure the option processing is fully inferrable
-    WT = @NamedTuple{bounds::NTuple{3,Any}, nbins::Any, bandwidth::Any, bwratio::Any}
+    WT = @NamedTuple{bounds::Any, nbins::Any, bandwidth::Any, bwratio::Any}
     #  don't cover too many variations, since that just adds to the test time
     variations = [WT((bounds, nbins, bandwidth, bwratio)) for
         bounds in ((nothing, nothing, :open), (-1, nothing, KDE.Closed)),
@@ -130,22 +130,50 @@ end
     @test_throws(ArgumentError(match"Unknown boundary condition: .*?"r),
                  convert(KDE.Boundary.T, :something))
 
-    # inferring boundary specifications
-    @test KDE.bounds([1.0, 2.0], (-Inf, Inf, nothing)) === (1.0, 2.0, KDE.Open)
-    @test KDE.bounds([1.0, 2.0], (0.0, Inf, nothing))  === (0.0, 2.0, KDE.ClosedLeft)
-    @test KDE.bounds([1.0, 2.0], (-Inf, 0, nothing))   === (1.0, 0.0, KDE.ClosedRight)
-    @test KDE.bounds([1.0, 2.0], (0, 1, nothing))      === (0.0, 1.0, KDE.Closed)
-    for bnds in [(NaN, 1.0), (Inf, 1.0), (0.0, NaN), (0.0, -Inf)]
-        @test_throws(ArgumentError(match"Invalid [^\s]+ bound: `(hi|lo) = .*?`"r),
-                     KDE.bounds(Float64[], (bnds..., nothing)))
+    @testset "Inferred boundary conditions ($(N)D)" for N in 1:3
+        # inferring boundary specifications
+        #   implicit :open condition filled in before limits are interpreted
+        data = (([1.0, 2.0] for _ in 1:N)...,)
+        bcrest = (((0.0, 3.0, KDE.Closed) for _ in 2:N)...,)
+
+        @test KDE.bounds(data, ((-Inf, Inf), bcrest...)) === ((1.0, 2.0, KDE.Open), bcrest...)
+        @test KDE.bounds(data, ((   0, Inf), bcrest...)) === ((0.0, 2.0, KDE.Open), bcrest...)
+        @test KDE.bounds(data, ((-Inf, Inf), bcrest...)) === ((1.0, 2.0, KDE.Open), bcrest...)
+        @test KDE.bounds(data, ((   0,   1), bcrest...)) === ((0.0, 1.0, KDE.Open), bcrest...)
+        #   explicitly inferred from lo/hi limits
+        @test KDE.bounds(data, ((-Inf, Inf, nothing), bcrest...)) === ((1.0, 2.0, KDE.Open), bcrest...)
+        @test KDE.bounds(data, (( 0.0, Inf, nothing), bcrest...)) === ((0.0, 2.0, KDE.ClosedLeft), bcrest...)
+        @test KDE.bounds(data, ((-Inf,   0, nothing), bcrest...)) === ((1.0, 0.0, KDE.ClosedRight), bcrest...)
+        @test KDE.bounds(data, ((   0,   1, nothing), bcrest...)) === ((0.0, 1.0, KDE.Closed), bcrest...)
+
+        for bnds in [(NaN, 1.0), (Inf, 1.0), (0.0, NaN), (0.0, -Inf)]
+            @test_throws(ArgumentError(match"Invalid [^\s]+ bound: `(hi|lo) = .*?`"r),
+                         KDE.bounds(data, (bcrest..., (bnds..., nothing))))
+        end
+        @test_throws(ArgumentError(match"Cannot infer boundary conditions with unspecified limits.*"r),
+                     KDE.bounds(data, (bcrest..., (nothing, nothing, nothing))))
+
+        # check for inferrability
+        @test @inferred(KDE.bounds(data, ((1, 2), bcrest...))) isa NTuple{N, Tuple{Float64, Float64, KDE.Boundary.T}}
     end
-    @test_throws(ArgumentError(match"Cannot infer boundary conditions with unspecified limits.*"r),
-                 KDE.bounds(Float64[], (nothing, nothing, nothing)))
+
+    # custom bounds spec: a bare tuple of (lo, hi) and (lo, hi, bc) **without** the wrapping
+    # 1D-case tuple is handled by a specialization
+    @test KDE.bounds(([1.0, 2.0],), (nothing, nothing)) === ((1.0, 2.0, KDE.Open),)
+    @test KDE.bounds(([1.0, 2.0],), (    0.0, nothing)) === ((0.0, 2.0, KDE.Open),)
+    @test KDE.bounds(([1.0, 2.0],), (nothing, nothing, :closed)) === ((1.0, 2.0, KDE.Closed),)
+    @test KDE.bounds(([1.0, 2.0],), (    0.0,     5.0, :closed)) === ((0.0, 5.0, KDE.Closed),)
+
+    # custom bounds spec: intead of a MethodError, raise an ArgumentError for unknown
+    # specifications
+    struct UnknownBoundsSpec end
+    @test_throws ArgumentError KDE.bounds([1.0], UnknownBoundsSpec())
+    @test_throws ArgumentError KDE.bounds(UnknownBoundsSpec(), (0.0, 1.0, :closed))
 
 
     v = [1.0, 2.0]
     kws = (; lo = 0.0, hi = 5.0, nbins = 5, bandwidth = 1.0, bwratio = 1)
-    kws_bc(bc) = (; bounds = (kws.lo, kws.hi, bc), kws.nbins, kws.bandwidth, kws.bwratio)
+    kws_bc(bc) = (; bounds = ((kws.lo, kws.hi, bc),), kws.nbins, kws.bandwidth, kws.bwratio)
 
     # closed boundaries -- histogram cells will span exactly lo/hi input
     x = range(kws.lo, kws.hi, length = kws.nbins + 1)
@@ -179,18 +207,6 @@ end
     @test step(k.x) == step(x)
     @test centers2edges(k.x) == x
 
-    # test that the half-open aliases work
-    k, info = estimate(KDE.HistogramBinning(), v; kws_bc(:openleft)...)
-    @test info.domain[1][3] === KDE.ClosedRight
-    k, info = estimate(KDE.HistogramBinning(), v; kws_bc(:openright)...)
-    @test info.domain[1][3] === KDE.ClosedLeft
-
-    # bounds=(lo, hi) is interpreted as bounds=(lo, hi, :open)
-    k1, info = estimate(KDE.HistogramBinning(), v; kws_bc(:open)...)
-    kws′ = merge(kws_bc(:open), (; bounds = (kws.lo, kws.hi)))
-    k2, info = estimate(KDE.HistogramBinning(), v; kws′...)
-    @test k1.x == k2.x && k1.f == k2.f
-
     # bounds= argument overrides lo=,hi=,boundary= and warns
     M = KDE.LinearBinning()
     @test_logs((:warn, "Keyword `bounds` is overriding non-nothing `lo`, `hi`, and/or `boundary`."),
@@ -199,12 +215,6 @@ end
                kde([1.0]; method = M, bounds = (0.0, 1.0, :open), hi = 2.0, bandwidth = 1.0))
     @test_logs((:warn, "Keyword `bounds` is overriding non-nothing `lo`, `hi`, and/or `boundary`."),
                kde([1.0]; method = M, bounds = (0.0, 1.0, :open), boundary = :closed, bandwidth = 1.0))
-
-
-    # argument error for unknown specifications rather than a method error
-    struct UnknownBoundsSpec end
-    @test_throws ArgumentError KDE.bounds(v, UnknownBoundsSpec())
-    @test_throws ArgumentError KDE.bounds(UnknownBoundsSpec(), (0.0, 1.0, :closed))
 end
 
 @testset "Direct estimates ($(N)D)" for N in 1:3

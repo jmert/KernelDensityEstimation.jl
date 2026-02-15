@@ -10,11 +10,22 @@ function bounds(::Any, spec::Any)
     throw(ArgumentError("Unknown how to interpret bounds `$spec` as interval and boundary condition"))
 end
 
-"""
-   lo, hi, bc = bounds(x, (lo, hi, bc))
+# a complete specification of bounds is a lower limit, upper limit, and the boundary condition
+const BoundsSpec = Tuple{Union{<:Number,Nothing}, Union{<:Number,Nothing},
+                         Union{Boundary.T,Symbol,Nothing}}
+# an incomplete specification skips the boundary conditions and uses an implicit definition
+const BoundsLims = Tuple{Union{<:Number,Nothing}, Union{<:Number,Nothing}}
+# we accept as arguments either an incomplete or complete specification
+const BoundsArgs = Union{BoundsSpec, BoundsLims}
 
-Refine the interval `lo` to `hi` and boundary condition `bc` to replace values of `nothing`
-with appropriate values based on the data in vector `x`.
+
+"""
+   specs = bounds(data, specs)
+   ((lo, hi, bc),) = bounds((x,), ((lo, hi, bc),))
+
+In 1D where `data = (x,)` and `specs = ((lo, hi, bc),)`, refine the interval `lo` to `hi`
+and boundary condition `bc` to replace values of `nothing` with appropriate values based on
+the data in vector `x`.
 
 - If either `lo` or `hi` are nothing, the extrema are used to refine to finite bounds.
 
@@ -22,64 +33,98 @@ with appropriate values based on the data in vector `x`.
   conditions — a finite value corresponds to a closed boundary condition, whereas an
   appropriately-signed infinity implies an open boundary.
 
+The boundary condition cannot be `nothing` if either of the interval endpoints are as well.
+
+In higher dimensions, each element in the `data` and `specs` tuples are processed as a pair
+in the same manner as for 1D.
+
 ## Examples
 ```jldoctest; setup = :(import .KDE: bounds; using .KDE.Boundary)
-julia> bounds(-1:0.1:1, (nothing, nothing, :closed))
-(-1.0, 1.0, Closed)
+julia> # lo and hi are inferred from data vector
+       bounds((-1:0.1:1,), ((nothing, nothing, :closed),))
+((-1.0, 1.0, Closed),)
 
-julia> bounds(-1:0.1:1, (0, nothing, :closedleft))
-(0.0, 1.0, ClosedLeft)
+julia> # only hi is inferred from the data
+       bounds((-1:0.1:1,), ((0, nothing, :closedleft),))
+((0.0, 1.0, ClosedLeft),)
 
-julia> bounds(-1:0.1:1, (-Inf, Inf, nothing))
-(-1.0, 1.0, Open)
+julia> # open intervals are inferred given the infinities
+       bounds((-1:0.1:1,), ((-Inf, Inf, nothing),))
+((-1.0, 1.0, Open),)
+
+julia> # two dimensional case
+       bounds((-1:0.1:1, 0:0.5:5.0), ((nothing, nothing, :open), (nothing, nothing, :closed)))
+((-1.0, 1.0, Open), (0.0, 5.0, Closed))
 ```
 """
-function bounds(x::AbstractVector{T},
-                (lo, hi, boundary)::Tuple{
-                    Union{<:Number,Nothing},
-                    Union{<:Number,Nothing},
-                    Union{Boundary.T,Symbol,Nothing}}
-               ) where {T}
-    isvalid(v, neg) = isnothing(v) || isfinite(v) || (isinf(v) && signbit(v) == neg)
-    isvalid(lo, true)  || throw(ArgumentError("Invalid lower bound: `lo = $lo`"))
-    isvalid(hi, false) || throw(ArgumentError("Invalid upper bound: `hi = $hi`"))
+function bounds(data::Tuple{Vararg{AbstractVector,N}},
+                specs::Tuple{Vararg{BoundsSpec,N}}
+                ) where {N}
+    return ntuple(Val(N)) do ii
+        x = data[ii]
+        lo, hi, boundary = specs[ii]
+        T = eltype(x)
 
-    # infer the boundary condition if it is not explicitly given
-    if isnothing(boundary)
+        isvalid(v, neg) = isnothing(v) || isfinite(v) || (isinf(v) && signbit(v) == neg)
+        isvalid(lo, true)  || throw(ArgumentError("Invalid lower bound: `lo = $lo`"))
+        isvalid(hi, false) || throw(ArgumentError("Invalid upper bound: `hi = $hi`"))
+
+        # infer the boundary condition if it is not explicitly given
+        if isnothing(boundary)
+            if isnothing(lo) || isnothing(hi)
+                throw(ArgumentError("Cannot infer boundary conditions with unspecified limits `lo = $lo`, `hi = $hi`"))
+            end
+            bc = (isfinite(lo) && isfinite(hi)) ? Closed :
+                 (isfinite(lo) && isinf(hi)) ? ClosedLeft :
+                 (isfinite(hi) && isinf(lo)) ? ClosedRight :
+                 Open
+        else
+            bc = convert(Boundary.T, boundary)
+        end
+
+        # now normalize ±∞ as `nothing` to infer limits from the data
+        lo = !isnothing(lo) && isinf(lo) ? nothing : lo
+        hi = !isnothing(hi) && isinf(hi) ? nothing : hi
+
+        # refine missing values of lo, hi where necessary
         if isnothing(lo) || isnothing(hi)
-            throw(ArgumentError("Cannot infer boundary conditions with unspecified limits `lo = $lo`, `hi = $hi`"))
+            a = b = first(x)
+            for xi in x
+                a = min(a, xi)
+                b = max(b, xi)
+            end
+            # refine limits where necessary
+            lo′ = isnothing(lo) ? a : T(lo)
+            hi′ = isnothing(hi) ? b : T(hi)
+        else
+            lo′, hi′ = T(lo), T(hi)
         end
-        bc = (isfinite(lo) && isfinite(hi)) ? Closed :
-             (isfinite(lo) && isinf(hi)) ? ClosedLeft :
-             (isfinite(hi) && isinf(lo)) ? ClosedRight :
-             Open
-    else
-        bc = convert(Boundary.T, boundary)
+        return (lo′, hi′, bc)::Tuple{T,T,Boundary.T}
     end
-
-    # now normalize ±∞ as `nothing` to infer limits from the data
-    lo = !isnothing(lo) && isinf(lo) ? nothing : lo
-    hi = !isnothing(hi) && isinf(hi) ? nothing : hi
-
-    # refine missing values of lo, hi where necessary
-    if isnothing(lo) || isnothing(hi)
-        a = b = first(x)
-        for xi in x
-            a = min(a, xi)
-            b = max(b, xi)
-        end
-        # refine limits where necessary
-        lo′ = isnothing(lo) ? a : T(lo)
-        hi′ = isnothing(hi) ? b : T(hi)
-    else
-        lo′, hi′ = T(lo), T(hi)
-    end
-    return (lo′, hi′, bc)::Tuple{T,T,Boundary.T}
 end
 
 # default boundary condition is open in kde(), so interpret a pair of limits as an open
 # boundary condition
-bounds(data::AbstractVector, (lo, hi)::NTuple{2, Union{<:Number,Nothing}}) = bounds(data, (lo, hi, Open))
+function bounds(data::Tuple{Vararg{AbstractVector,N}},
+                spec::Tuple{Vararg{BoundsArgs,N}}) where {N}
+    spec′ = ntuple(Val(N)) do ii
+        s = spec[ii]
+        return s isa BoundsSpec ? s : (s..., Open)
+    end
+    return bounds(data, spec′)
+end
+# and similar for the base where nothing is provided
+"""
+    domain = bounds(data::Tuple{Vararg{AbstractVector,N}}, ::Nothing) where {N}
+
+Infers the domain over all dimensions in `data` assuming open intervals.
+"""
+function bounds(data::Tuple{Vararg{AbstractVector,N}}, ::Nothing) where {N}
+    return bounds(data, ntuple(_ -> (nothing, nothing, Open), Val(N)))
+end
+
+# special case for 1D
+bounds(data::Tuple{AbstractVector}, spec::BoundsArgs) = bounds(data, (spec,))
 
 
 """
@@ -426,7 +471,7 @@ end
     data, weights, details = init(
             method::K, data::AbstractVector{T},
             weights::Union{Nothing,<:AbstractVector} = nothing;
-            bounds = (nothing, nothing, Open),
+            bounds = nothing,
             bwratio::Real = 1,
             nbins::Union{Nothing,<:Integer} = nothing,
             bandwidth::Union{<:Number,<:AbstractBandwidthEstimator} = ISJBandwidth(),
@@ -436,7 +481,7 @@ end
 function init(method::K,
               data::AbstractVector{T},
               weights::Union{Nothing,<:AbstractVector} = nothing;
-              bounds = (nothing, nothing, Open),
+              bounds = nothing,
               bwratio::Real = 8,
               nbins::Union{Nothing,<:Integer} = nothing,
               bandwidth::Union{<:Number,<:AbstractBandwidthEstimator} = ISJBandwidth(),
@@ -446,10 +491,9 @@ function init(method::K,
     info.bounds = bounds
 
     # Convert the input bounds to the required canonical representation
-    domain = KernelDensityEstimation.bounds(data, bounds)::Tuple{T,T,Boundary.T}
-    lo′, hi′, boundary′ = domain
-    info.domain = (domain,)
+    info.domain = domain = KernelDensityEstimation.bounds((data,), bounds)
     info.nbins = isnothing(nbins) ? nothing : (nbins,)
+    lo′, hi′, boundary′ = domain[1]
 
     # Calculate the effective sample size, based on weights and the bounds, using the
     # Kish effective sample size definition:
