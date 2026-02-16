@@ -951,7 +951,7 @@ end
 end
 
 """
-    estim = kde(data;
+    estim = kde(data...;
                 weights = nothing, method = MultiplicativeBiasKDE(),
                 lo = nothing, hi = nothing, boundary = :open, bounds = nothing,
                 bandwidth = ISJBandwidth(), bwratio = 8 nbins = nothing)
@@ -987,10 +987,12 @@ The histogram is then convolved with a Gaussian distribution with standard devia
 The default bandwidth estimator is the Improved Sheather-Jones ([`ISJBandwidth`](@ref)) if
 no explicit bandwidth is given.
 """
-function kde(data;
+function kde end
+
+function kde(data::AbstractVector;
              weights = nothing, method::AbstractKDEMethod = MultiplicativeBiasKDE(),
              lo = nothing, hi = nothing, boundary = nothing, bounds = nothing,
-             bandwidth = ISJBandwidth(), bwratio = 8, nbins = nothing,
+             bandwidth = ISJBandwidth(), bwratio = nothing, nbins = nothing,
             )
     # Warn if the bounds argument is going to override any values provided in lo, hi, or
     # boundary
@@ -1002,15 +1004,28 @@ function kde(data;
     # Consolidate high-level keywords for (; lo, hi, boundary) into the lower-level
     # interface's (; bounds) keyword.
     if isnothing(bounds)
-        bc = isnothing(boundary) ? Open : boundary
-        bounds = (lo, hi, bc)
+        bounds = (lo, hi, isnothing(boundary) ? Open : boundary)
     end
     estim, _ = estimate(method, (data,), weights; bounds, bandwidth,
                         nbins = isnothing(nbins) ? nothing : (nbins,),
-                        bwratio = (bwratio,))
+                        bwratio = isnothing(bwratio) ? nothing : (bwratio,))
 
     # The pipeline is not perfectly norm-preserving, so renormalize before returning to
     # the user.
     rdiv!(estim.f, sum(estim.f) * step(estim.x))
+    return estim
+end
+
+function kde(x1::AbstractVector, xn::AbstractVector...;
+             weights = nothing, method::AbstractKDEMethod = BasicKDE(),
+             bounds = nothing, bandwidth = SilvermanBandwidth(), bwratio = nothing,
+             nbins = nothing)
+    !isnothing(weights) && checkbounds(x1, eachindex(weights))
+    !isempty(xn) && checkbounds(x1, eachindex(xn...))
+
+    estim, _ = estimate(method, (x1, xn...), weights; bounds, bandwidth, nbins, bwratio)
+    # The pipeline is not perfectly norm-preserving, so renormalize before returning to
+    # the user.
+    rdiv!(estim.density, sum(estim.density) * mapreduce(step, *, estim.axes))
     return estim
 end
