@@ -422,9 +422,9 @@ end
         bounds = (-5rv_norm_σ, 5rv_norm_σ, KDE.Open)
 
         # uniform weights reduce to the same effective sample size
-        bw0 = KDE.bandwidth(bandwidth, rv, bounds...)
-        bw1 = KDE.bandwidth(bandwidth, rv, bounds...; weights = weight1)
-        bw2 = KDE.bandwidth(bandwidth, rv, bounds...; weights = weight2)
+        bw0 = KDE.bandwidth(bandwidth, rv, bounds)
+        bw1 = KDE.bandwidth(bandwidth, rv, bounds, weight1)
+        bw2 = KDE.bandwidth(bandwidth, rv, bounds, weight2)
         @test bw0 == bw1
         @test bw0 == bw2
     end

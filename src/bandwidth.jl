@@ -2,9 +2,9 @@ import LinearAlgebra: Symmetric, cholesky, cholesky!, isposdef
 
 # convenient wrapper for univariate inputs
 function bandwidth(estim::AbstractBandwidthEstimator,
-                   data::AbstractVector, lo::Any, hi::Any, boundary::Boundary.T;
+                   data::AbstractVector, bounds::Tuple{Any,Any,Boundary.T},
                    weights::Union{Nothing,<:AbstractVector} = nothing)
-    return bandwidth(estim, (data,), (lo,), (hi,), (boundary,); weights)
+    return bandwidth(estim, (data,), (bounds,), weights)
 end
 
 
@@ -137,12 +137,12 @@ struct SilvermanBandwidth <: AbstractBandwidthEstimator end
 
 function bandwidth(::SilvermanBandwidth,
                    data::Tuple{Vararg{AbstractVector,N}},
-                   lo::Tuple{Vararg{Any,N}},
-                   hi::Tuple{Vararg{Any,N}},
-                   ::Tuple{Vararg{Boundary.T,N}};
+                   bounds::Tuple{Vararg{Tuple{Any,Any,Boundary.T},N}},
                    weights::Union{Nothing,<:AbstractVector} = nothing
                    ) where {N}
     T = promote_type(map(_unitless∘eltype, data)...)
+    lo = map(b -> b[1], bounds)
+    hi = map(b -> b[2], bounds)
     neff, Σ = _neff_covar(data, lo, hi, weights)
     # From Hansen (2009) — https://users.ssc.wisc.edu/~bhansen/718/NonParametrics1.pdf
     # for a Gaussian kernel:
@@ -190,12 +190,12 @@ end
 # specialize for 1D case where the variance is scalar, so allocating arrays can be avoided
 function bandwidth(::SilvermanBandwidth,
                    data::Tuple{AbstractVector},
-                   lo::Tuple{Any},
-                   hi::Tuple{Any},
-                   ::Tuple{Boundary.T};
+                   bounds::Tuple{Tuple{Any,Any,Boundary.T}},
                    weights::Union{Nothing,<:AbstractVector} = nothing
                    )
     T = promote_type(map(_unitless∘eltype, data)...)
+    lo = (bounds[1][1],)
+    hi = (bounds[1][2],)
     neff, Σ = _neff_covar(data, lo, hi, weights)
     # From Hansen (2009) — https://users.ssc.wisc.edu/~bhansen/718/NonParametrics1.pdf
     # for a Gaussian kernel:
@@ -379,14 +379,13 @@ end
 
 function bandwidth(isj::ISJBandwidth{<:Any},
                    data::Tuple{AbstractVector{T}},
-                   lo::Tuple{T}, hi::Tuple{T}, boundary::Tuple{Boundary.T};
+                   bounds::Tuple{Tuple{T, T, Boundary.T}},
                    weights::Union{Nothing, <:AbstractVector} = nothing
                    ) where {T}
     # The Silverman bandwidth estimator should be sufficient to obtain a fine-enough
     # binning that the ISJ algorithm can iterate.
     # We need a histogram, so just reuse the binning base case of the estimator pipeline
     # to provide what we need.
-    bounds = (lo[1], hi[1], boundary[1])
     (x, f), info = estimate(isj.binning, data[1], weights; bounds, isj.bwratio,
                             bandwidth = SilvermanBandwidth())
 

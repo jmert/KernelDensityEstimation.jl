@@ -540,10 +540,8 @@ function init(method::K,
 
     # Estimate bandwidth from data, as necessary
     if bandwidth isa AbstractBandwidthEstimator
-        lo′, hi′, boundary′ = domain[1]
         info.bandwidth_alg = bandwidth
-        bandwidth′ = KernelDensityEstimation.bandwidth(
-                bandwidth, data, lo′, hi′, boundary′; weights)
+        bandwidth′ = KernelDensityEstimation.bandwidth(bandwidth, (data,), domain, weights)
         m = estimator_order(typeof(method))
         d = 1  # TODO: generalize to N-dimensional
         # Use a larger bandwidth for higher-order estimators which achieve lower bias

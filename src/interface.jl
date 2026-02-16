@@ -111,16 +111,14 @@ function bounds end
 """
     h = bandwidth(estimator::AbstractBandwidthEstimator,
                   data::Tuple{Vararg{AbstractVector,N}},
-                  lo::Tuple{Vararg{Any,N}}, hi::Tuple{Vararg{Any,N}},
-                  boundary::Vararg{Boundary.T,N};
+                  bounds::Tuple{Vararg{Tuple{Any,Any,Boundary.T},N}},
                   weights::Union{Nothing,<:AbstractVector} = nothing
                   ) where {N}
 
 Determine the appropriate bandwidth `h` of the data set `data` (optionally with
 corresponding `weights`) using chosen `estimator` algorithm.
-The bandwidth is provided the domain (`lo` through `hi`) and boundary style(s) (`boundary`)
-of the requested KDE for use in filtering and/or correctly interpreting the data, if
-necessary.
+The bandwidth is provided the domain and boundary conditions (see [`bounds`](@ref)) of the
+requested KDE for use in filtering and/or correctly interpreting the data, if necessary.
 
 # Extended help
 

@@ -146,15 +146,15 @@ end
         atol = (sqrt(eps(1.0)) / N) ^ (1 // 5)  # scale error similarly to AMISE
         r = view(rv_norm_long, 1:N)
         t = G_amise(N, σ)
-        h = KDE.bandwidth(estim, r, -6σ, 6σ, KDE.Open)
+        h = KDE.bandwidth(estim, r, (-6σ, 6σ, KDE.Open))
         @test t ≈ h atol=atol
     end
 
     # Verify that the bandwidth estimator respects the lo/hi limits and excludes
     # out-of-bounds elements
     r = view(rv_norm_long, 1:256)
-    h₀ = KDE.bandwidth(estim, r, -6σ, 6σ, KDE.Closed)
-    h₁ = KDE.bandwidth(estim, r, 0.0, 6σ, KDE.Closed)
+    h₀ = KDE.bandwidth(estim, r, (-6σ, 6σ, KDE.Closed))
+    h₁ = KDE.bandwidth(estim, r, (0.0, 6σ, KDE.Closed))
     let z = r, γ = (4 // 3length(z))^(1 // 5)
         @test h₀ ≈ γ * std(z, corrected = false)
     end
@@ -165,7 +165,7 @@ end
     @testset "Unitful numbers" begin
         σ′ = Quantity(rv_norm_σ, u"m")
         r′ = Quantity.(view(rv_norm_long, 1:100), u"m")
-        @test (@inferred KDE.bandwidth(estim, r′, -6σ′, 6σ′, KDE.Open)) isa Float64
+        @test (@inferred KDE.bandwidth(estim, r′, (-6σ′, 6σ′, KDE.Open))) isa Float64
     end
 
     # Test behavior under degenerate / exceptional cases
@@ -179,14 +179,14 @@ end
         @test iszero(uvar1)
         # ...the bandwidth estimator always returns a non-zero value instead so that
         # a finite gaussian can be generated
-        h = KDE.bandwidth(estim, u, 0.0, 2.0, KDE.Open)
+        h = KDE.bandwidth(estim, u, (0.0, 2.0, KDE.Open))
         @test h > 0
         # and similar for 2x2 (where the covariance matrix is singular, with zero row/col
         # corresponding to the uniform data)
         neff, covar = KDE._neff_covar((u, v), lo(2), hi(2), nothing)
         @test [0  0  ;
                0 vvar] == covar
-        H = KDE.bandwidth(estim, (u, v), lo(2), hi(2), open(2))
+        H = KDE.bandwidth(estim, (u, v), (zip(lo(2), hi(2), open(2))...,))
         @test [true   z  ;
                true false] == isapprox.(H.L, 0.0, atol=sqrt(eps(1.0)))
 
@@ -196,7 +196,7 @@ end
         neff, covar = KDE._neff_covar((v, v), lo(2), hi(2), nothing)
         @test [vvar vvar;
                vvar vvar] == covar
-        H = KDE.bandwidth(estim, (v, v), lo(2), hi(2), open(2))
+        H = KDE.bandwidth(estim, (v, v), (zip(lo(2), hi(2), open(2))...,))
         @test [false  z  ;
                false true] == isapprox.(H.L, 0.0, atol=sqrt(eps(1.0)))
         #   3x3
@@ -204,7 +204,7 @@ end
         @test [vvar 0 vvar;
                 0   0   0 ;
                vvar 0 vvar] == covar
-        H = KDE.bandwidth(estim, (v, u, v), lo(3), hi(3), open(3))
+        H = KDE.bandwidth(estim, (v, u, v), (zip(lo(3), hi(3), open(3))...,))
         @test [false  z    z  ;
                true  true  z  ;
                false true true] == isapprox.(H.L, 0.0, atol=sqrt(eps(1.0)))
@@ -236,7 +236,7 @@ end # Silverman Bandwidth
         atol = (sqrt(eps(1.0)) / N) ^ (1 // 5)  # scale error similarly to AMISE
         σ, v = rv_norm_σ, view(rv_norm_long, 1:N)
         t = G_amise(N, σ)
-        h = KDE.bandwidth(ISJBandwidth(), v, -6σ, 6σ, KDE.Open)
+        h = KDE.bandwidth(ISJBandwidth(), v, (-6σ, 6σ, KDE.Open))
         @test t ≈ h atol=atol
     end
 
@@ -244,20 +244,20 @@ end # Silverman Bandwidth
     # smaller if the boundary is incorrectly declared as open versus [half-]closed.
     let σ = rv_norm_σ
         v = filter(>(0), view(rv_norm_long, 1:20_000))
-        open_h = KDE.bandwidth(ISJBandwidth(), v, 0.0, 6.0σ, KDE.Open)
-        close_h = KDE.bandwidth(ISJBandwidth(), v, 0.0, 6.0σ, KDE.ClosedLeft)
+        open_h = KDE.bandwidth(ISJBandwidth(), v, (0.0, 6.0σ, KDE.Open))
+        close_h = KDE.bandwidth(ISJBandwidth(), v, (0.0, 6.0σ, KDE.ClosedLeft))
         @test 5open_h < close_h
     end
 
     # The ISJ estimator fails in some cases. Easy examples are:
     #   1. Very small data sets.
-    args = ([1.0, 1.1], 0.0, 2.0, KDE.Open)
+    args = ([1.0, 1.1], (0.0, 2.0, KDE.Open))
     @test KDE.bandwidth(ISJBandwidth(fallback = true), args...) ==
           KDE.bandwidth(SilvermanBandwidth(), args...)
     @test_throws(ErrorException("ISJ estimator failed to converge. More data is needed."),
                  KDE.bandwidth(ISJBandwidth(fallback = false), args...))
     #   2. A uniform distribution on a finite interval.
-    args = (collect(0.0:0.1:1.0), 0.0, 1.0, KDE.Closed)
+    args = (collect(0.0:0.1:1.0), (0.0, 1.0, KDE.Closed))
     @test KDE.bandwidth(ISJBandwidth(fallback = true), args...) ==
           KDE.bandwidth(SilvermanBandwidth(), args...)
     @test_throws(ErrorException("ISJ estimator failed to converge. More data is needed."),
@@ -266,7 +266,7 @@ end # Silverman Bandwidth
     @testset "Unitful numbers" begin
         σ = Quantity(rv_norm_σ, u"m")
         v = Quantity.(view(rv_norm_long, 1:100), u"m")
-        @test (@inferred KDE.bandwidth(KDE.ISJBandwidth(fallback = false), v, -6σ, 6σ, KDE.Open)) isa Float64
+        @test (@inferred KDE.bandwidth(KDE.ISJBandwidth(fallback = false), v, (-6σ, 6σ, KDE.Open))) isa Float64
     end
 end  # ISJ Bandwidth
 
@@ -284,7 +284,7 @@ end  # ISJ Bandwidth
 @test KDE.estimator_order(KDE.MultiplicativeBiasKDE) == 2
 let N = 1_000, σ = rv_norm_σ, v = view(rv_norm_long, 1:N),
     bandwidth = KDE.SilvermanBandwidth(), bounds = (-6σ, 6σ, KDE.Open)
-    h₀ = KDE.bandwidth(bandwidth, v, bounds...)
+    h₀ = KDE.bandwidth(bandwidth, v, bounds)
     h₁ = KDE.init(KDE.MultiplicativeBiasKDE(), v; bandwidth, bounds)[3].bandwidth[1]
     @test h₁ / h₀ ≈ N ^ (1//5 - 1//9)
 end
