@@ -285,6 +285,6 @@ end  # ISJ Bandwidth
 let N = 1_000, σ = rv_norm_σ, v = view(rv_norm_long, 1:N),
     bandwidth = KDE.SilvermanBandwidth(), bounds = (-6σ, 6σ, KDE.Open)
     h₀ = KDE.bandwidth(bandwidth, v, bounds)
-    h₁ = KDE.init(KDE.MultiplicativeBiasKDE(), v; bandwidth, bounds)[3].bandwidth[1]
+    h₁ = KDE.init(KDE.MultiplicativeBiasKDE(), (v,); bandwidth, bounds)[3].bandwidth[1]
     @test h₁ / h₀ ≈ N ^ (1//5 - 1//9)
 end

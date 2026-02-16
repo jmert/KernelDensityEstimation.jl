@@ -103,22 +103,22 @@ end
     #  don't cover too many variations, since that just adds to the test time
     variations = [WT((bounds, nbins, bandwidth, bwratio)) for
         bounds in ((nothing, nothing, :open), (-1, nothing, KDE.Closed)),
-        nbins in (nothing, 10),
+        nbins in (nothing, (10,)),
         bandwidth in (KDE.SilvermanBandwidth(), 1.0),
-        bwratio in (1,)
+        bwratio in ((1,),)
     ]
     method = KDE.LinearBinning()
 
     RT = Tuple{Tuple{Vector{Float64}}, Nothing, KDE.UnivariateKDEInfo{Float64}}
     @testset "options = $kws" for kws in variations
-        @test @inferred(init(method, [1.0]; kws...)) isa RT
+        @test @inferred(init(method, ([1.0],); kws...)) isa RT
     end
     # also test that default values work
-    @test @inferred(init(method, [1.0], bandwidth = 1.0)) isa RT
+    @test @inferred(init(method, ([1.0],), bandwidth = 1.0)) isa RT
 
     # Unused options that make it down to the option processing step log a warning message
     @test_logs((:warn, "Unused keyword argument(s)"),
-               KDE.init(method, [1.0], bandwidth = 1.0, unusedarg=true))
+               KDE.init(method, ([1.0],), bandwidth = 1.0, unusedarg=true))
 end
 
 @testset "Bounds Handling" begin
@@ -171,39 +171,40 @@ end
     @test_throws ArgumentError KDE.bounds(UnknownBoundsSpec(), (0.0, 1.0, :closed))
 
 
-    v = [1.0, 2.0]
-    kws = (; lo = 0.0, hi = 5.0, nbins = 5, bandwidth = 1.0, bwratio = 1)
+    v = ([1.0, 2.0],)
+    nbins = 5
+    kws = (; lo = 0.0, hi = 5.0, nbins = (nbins,), bandwidth = 1.0, bwratio = (1,))
     kws_bc(bc) = (; bounds = ((kws.lo, kws.hi, bc),), kws.nbins, kws.bandwidth, kws.bwratio)
 
     # closed boundaries -- histogram cells will span exactly lo/hi input
-    x = range(kws.lo, kws.hi, length = kws.nbins + 1)
+    x = range(kws.lo, kws.hi, length = nbins + 1)
     k, info = estimate(KDE.HistogramBinning(), v; kws_bc(:closed)...)
     @test info.domain[1][3] === KDE.Closed
-    @test length(k.x) == kws.nbins
+    @test length(k.x) == nbins
     @test step(k.x) == step(x)
     @test centers2edges(k.x) == x
 
     # open boundaries --- histogram extends to 8x further left/right than lo/hi
-    x = range(kws.lo - 8kws.bandwidth, kws.hi + 8kws.bandwidth, length = kws.nbins + 1)
+    x = range(kws.lo - 8kws.bandwidth, kws.hi + 8kws.bandwidth, length = nbins + 1)
     k, info = estimate(KDE.HistogramBinning(), v; kws_bc(:open)...)
     @test info.domain[1][3] === KDE.Open
-    @test length(k.x) == kws.nbins
+    @test length(k.x) == nbins
     @test step(k.x) == step(x)
     @test centers2edges(k.x) == x
 
     # half-open boundaries --- either left or right side is extended, while the other is
     # exact
-    x = range(kws.lo, kws.hi + 8kws.bandwidth, length = kws.nbins + 1)
+    x = range(kws.lo, kws.hi + 8kws.bandwidth, length = nbins + 1)
     k, info = estimate(KDE.HistogramBinning(), v; kws_bc(:closedleft)...)
     @test info.domain[1][3] === KDE.ClosedLeft
-    @test length(k.x) == kws.nbins
+    @test length(k.x) == nbins
     @test step(k.x) == step(x)
     @test centers2edges(k.x) == x
 
-    x = range(kws.lo - 8kws.bandwidth, kws.hi, length = kws.nbins + 1)
+    x = range(kws.lo - 8kws.bandwidth, kws.hi, length = nbins + 1)
     k, info = estimate(KDE.HistogramBinning(), v; kws_bc(:closedright)...)
     @test info.domain[1][3] === KDE.ClosedRight
-    @test length(k.x) == kws.nbins
+    @test length(k.x) == nbins
     @test step(k.x) == step(x)
     @test centers2edges(k.x) == x
 
@@ -289,10 +290,11 @@ end
 end
 
 @testset "Simple Binning" begin
-    kws = (; bandwidth = KDE.SilvermanBandwidth(), bwratio = 1)
+    kws = (; bandwidth = KDE.SilvermanBandwidth(), bwratio = (1,))
 
     # raw data
     v₁ = Float64[0.5, 1.5, 1.5, 2.5, 2.5, 2.5, 3.5, 3.5, 4.5]
+    data = (v₁,)
     # non-zero elements of the probability **mass** function
     #   N.B. KDE returns probability **density** function
     h₁ = [1, 2, 3, 2, 1] ./ length(v₁)
@@ -302,8 +304,8 @@ end
     b₀ = σ̂ * (4//3 / ν)^(1/5)  # Silverman's rule
 
     # prepared using known limits and number of bins
-    k₁, info = estimate(KDE.HistogramBinning(), v₁;
-                        bounds = _bounds(lo=0, hi=5, bc=:closed), nbins = 5, kws...)
+    k₁, info = estimate(KDE.HistogramBinning(), data;
+                        bounds = _bounds(lo=0, hi=5, bc=:closed), nbins = (5,), kws...)
     Δx = step(k₁.x)
     @test k₁.x == edges2centers(0.0:1.0:5.0)
     @test isapprox(k₁.f .* Δx, h₁)
@@ -311,8 +313,8 @@ end
     @test info.bandwidth[1] ≈ b₀
 
     # prepared with known number of bins, but automatically selected bounds
-    k₂, info = estimate(KDE.HistogramBinning(), v₁;
-                        bounds = _bounds(bc = :closed), nbins = 5, kws...)
+    k₂, info = estimate(KDE.HistogramBinning(), data;
+                        bounds = _bounds(bc = :closed), nbins = (5,), kws...)
     Δx = step(k₂.x)
     @test k₂.x == edges2centers(range(0.5, 4.5, length = 5 + 1))
     @test isapprox(k₂.f .* Δx, h₁)
@@ -320,7 +322,7 @@ end
     @test info.bandwidth[1] ≈ b₀
 
     # prepared with unknown number of bins, but known bounds
-    k₃, info = estimate(KDE.HistogramBinning(), v₁;
+    k₃, info = estimate(KDE.HistogramBinning(), data;
                         bounds = _bounds(lo=0, hi=5, bc=:closed), kws...)
     Δx = step(k₃.x)
     @test k₃.x == edges2centers(range(0.0, 5.0, length = round(Int, 5 / b₀) + 1))
@@ -329,7 +331,7 @@ end
     @test info.bandwidth[1] ≈ b₀
 
     # prepared with unknown limits and number of bins
-    k₄, info = estimate(KDE.HistogramBinning(), v₁;
+    k₄, info = estimate(KDE.HistogramBinning(), data;
                         bounds = _bounds(bc=:closed), kws...)
     Δx = step(k₄.x)
     @test isapprox(filter(!iszero, k₄.f) .* Δx, h₁)
@@ -337,8 +339,8 @@ end
     @test info.bandwidth[1] ≈ b₀
 
     # prepared using an alternative sampling density (compared to previous)
-    k₅, info = estimate(KDE.HistogramBinning(), v₁;
-                        bounds = _bounds(bc=:closed), kws..., bwratio = 16)
+    k₅, info = estimate(KDE.HistogramBinning(), data;
+                        bounds = _bounds(bc=:closed), kws..., bwratio = (16,))
     Δx = step(k₅.x)
     @test step(k₅.x) < step(k₄.x)
     @test isapprox(filter(!iszero, k₅.f) .* Δx, h₁)
@@ -346,7 +348,7 @@ end
     @test info.bandwidth[1] ≈ b₀
 
     # make sure errors do not occur when uniform data is provided
-    let (k, info) = estimate(KDE.HistogramBinning(), ones(100);
+    let (k, info) = estimate(KDE.HistogramBinning(), (ones(100),);
                              bounds = _bounds(bc=:closed), kws...)
         @test collect(k.x) == [1.0]
         @test isfinite(info.bandwidth[1]) && !iszero(info.bandwidth[1])
@@ -355,19 +357,19 @@ end
     end
 
     # make sure the bandwidth argument is converted to the appropriate common type
-    _, info = estimate(KDE.HistogramBinning(), v₁; kws...)
+    _, info = estimate(KDE.HistogramBinning(), data; kws...)
     @test eltype(info.bandwidth) === Float64
-    _, info = estimate(KDE.HistogramBinning(), v₁; bandwidth = 1)  # explicit but not same type
+    _, info = estimate(KDE.HistogramBinning(), data; bandwidth = 1)  # explicit but not same type
     @test eltype(info.bandwidth) === Float64
-    _, info = estimate(KDE.HistogramBinning(), Float32.(v₁); kws...)
+    _, info = estimate(KDE.HistogramBinning(), (Float32.(v₁),); kws...)
     @test eltype(info.bandwidth) === Float32
-    _, info = estimate(KDE.HistogramBinning(), Float32.(v₁); bandwidth = 1)
+    _, info = estimate(KDE.HistogramBinning(), (Float32.(v₁),); bandwidth = 1)
     @test eltype(info.bandwidth) === Float32
 
 
     expT = Tuple{KDE.UnivariateKDE{Float64,<:AbstractRange{Float64},<:AbstractVector{Float64}},
                  KDE.UnivariateKDEInfo{Float64}}
-    @test @inferred(estimate(KDE.HistogramBinning(), [1.0, 2.0]; nbins = 2, kws...)) isa expT
+    @test @inferred(estimate(KDE.HistogramBinning(), data; nbins = (2,), kws...)) isa expT
 end
 
 @testset "Weighting" begin
@@ -487,29 +489,29 @@ end
     nsamp = 10nbins
     Δx = 1.0 / nbins
 
-    v_uniform = range(-1, 1, length = nsamp)
+    v_uniform = (range(-1, 1, length = nsamp),)
     p_uniform = 1.0 / nbins
 
     # Tune the bandwidth to be much smaller than the bin sizes, which effectively means
     # we just get back the internal histogram (when performing only a basic KDE).
     (x, f), _ = estimate(KDE.BasicKDE(), v_uniform;
-                         bounds = _bounds(bc=:closed), nbins = nbins, bandwidth = 0.1Δx)
+                         bounds = _bounds(bc=:closed), nbins = (nbins,), bandwidth = 0.1Δx)
     @test all(isapprox.(f .* step(x), p_uniform, atol = 1e-3))
     # Then increase the bandwidth to be the same size of the bins. The outermost bins will
     # impacted by the kernel convolving with implicit zeros beyond the edges of the
     # distribution, so we should expect a significant decrease in the first and last bin.
     (x, f), _ = estimate(KDE.BasicKDE(), v_uniform;
-                         bounds = _bounds(bc=:closed), nbins = nbins, bandwidth = Δx)
+                         bounds = _bounds(bc=:closed), nbins = (nbins,), bandwidth = Δx)
     @test all(isapprox.(f[2:end-1] .* step(x), p_uniform, atol = 1e-3))  # approximate p_uniform
     @test all(<(-1e-3), f[[1,end]] .* step(x) .- p_uniform) # systematically less than p_uniform
 
     # If we put a Kronecker delta in the center of a span with a wide (lo, hi) spread,
     # we should effectively just get back the convolution kernel.
-    v_kron = zeros(100)
+    v_kron = (zeros(100),)
     bw = 1.0
 
-    (x, f1), _ = estimate(KDE.BasicKDE(), v_kron; bounds = (-6bw, 6bw, :closed), nbins = 251, bandwidth = bw)
-    (x, f2), _ = estimate(KDE.BasicKDE(), v_kron; bounds = (-6bw, 6bw, :closed), nbins = 251, bandwidth = bw)
+    (x, f1), _ = estimate(KDE.BasicKDE(), v_kron; bounds = (-6bw, 6bw, :closed), nbins = (251,), bandwidth = bw)
+    (x, f2), _ = estimate(KDE.BasicKDE(), v_kron; bounds = (-6bw, 6bw, :closed), nbins = (251,), bandwidth = bw)
     g = exp.(.-(x ./ bw) .^2 ./ 2) ./ (bw * sqrt(2π)) .* step(x)
     @test all(isapprox.(f1 .* step(x), g, atol = 1e-5))
     @test all(isapprox.(f2 .* step(x), g, atol = 1e-5))
@@ -540,26 +542,26 @@ end
     nsamp = 10nbins
     Δx = 1.0 / nbins
 
-    v_uniform = range(-1, 1, length = nsamp)
+    v_uniform = (range(-1, 1, length = nsamp),)
     p_uniform = 1.0 / nbins
 
     # Enable the normalization option, which makes a correction for the implicit zeros
     # being included in the convolution
     (x, f), _ = estimate(KDE.LinearBoundaryKDE(), v_uniform;
-                         bounds = _bounds(bc=:closed), nbins = nbins, bandwidth = Δx)
+                         bounds = _bounds(bc=:closed), nbins = (nbins,), bandwidth = Δx)
     @test all(isapprox.(f .* step(x), p_uniform, atol = 1e-3))  # approximately p_uniform
     # and that correction keeps working as the bandwidth causes multiple bins to be affected
     (x, f), _ = estimate(KDE.LinearBoundaryKDE(), v_uniform;
-                         bounds = _bounds(bc=:closed), nbins = nbins, bandwidth = 6Δx)
+                         bounds = _bounds(bc=:closed), nbins = (nbins,), bandwidth = 6Δx)
     @test all(isapprox.(f .* step(x), p_uniform, atol = 1e-3))  # approximately p_uniform
 
     # The boundary correction only applies when a hard boundary is encountered, so the
     # BasicKDE and LinearBoundaryKDE should provide very similar distributions when
     # the boundary is Open.
     (x₁, f₁), _ = estimate(KDE.BasicKDE(), v_uniform,
-                           bounds = _bounds(bc=:open), nbins = nbins, bandwidth = 2Δx)
+                           bounds = _bounds(bc=:open), nbins = (nbins,), bandwidth = 2Δx)
     (x₂, f₂), _ = estimate(KDE.LinearBoundaryKDE(), v_uniform;
-                           bounds = _bounds(bc=:open), nbins = nbins, bandwidth = 2Δx)
+                           bounds = _bounds(bc=:open), nbins = (nbins,), bandwidth = 2Δx)
     @test all(isapprox.(f₁, f₂, atol = 1e-3))
 end
 

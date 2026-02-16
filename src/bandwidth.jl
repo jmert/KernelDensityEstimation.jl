@@ -1,3 +1,4 @@
+import FFTW
 import LinearAlgebra: Symmetric, cholesky, cholesky!, isposdef
 
 # convenient wrapper for univariate inputs
@@ -386,7 +387,7 @@ function bandwidth(isj::ISJBandwidth{<:Any},
     # binning that the ISJ algorithm can iterate.
     # We need a histogram, so just reuse the binning base case of the estimator pipeline
     # to provide what we need.
-    (x, f), info = estimate(isj.binning, data[1], weights; bounds, isj.bwratio,
+    (x, f), info = estimate(isj.binning, data, weights; bounds, bwratio = (isj.bwratio,),
                             bandwidth = SilvermanBandwidth())
 
     bandwidth = info.bandwidth[1]

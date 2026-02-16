@@ -1,4 +1,3 @@
-import FFTW
 import LinearAlgebra: Cholesky, ldiv!, rdiv!, rmul!
 import Logging: @warn
 @static if VERSION < v"1.9"
@@ -511,59 +510,57 @@ end
 end
 
 """
-    data, weights, details = init(
-            method::K, data::AbstractVector{T},
+    data, weights, details = init(method::K,
+            data::Tuple{Vararg{AbstractVector,N}},
             weights::Union{Nothing,<:AbstractVector} = nothing;
             bounds = nothing,
-            bwratio::Real = 1,
-            nbins::Union{Nothing,<:Integer} = nothing,
+            bwratio::Union{Nothing,Tuple{Vararg{Real,N}}} = nothing,
+            nbins::Union{Nothing,Tuple{Vararg{Integer,N}}} = nothing,
             bandwidth::Union{<:Number,<:AbstractBandwidthEstimator} = ISJBandwidth(),
             kwargs...
-        ) where {K<:AbstractKDEMethod, T}
+        ) where {K<:AbstractKDEMethod, N}
 """
 function init(method::K,
-              data::AbstractVector{T},
+              data::Tuple{Vararg{AbstractVector,N}},
               weights::Union{Nothing,<:AbstractVector} = nothing;
               bounds = nothing,
-              bwratio::Real = 8,
-              nbins::Union{Nothing,<:Integer} = nothing,
+              bwratio::Union{Nothing,Tuple{Vararg{Real,N}}} = nothing,
+              nbins::Union{Nothing,Tuple{Vararg{Integer,N}}} = nothing,
               bandwidth::Union{<:Number,<:AbstractBandwidthEstimator} = ISJBandwidth(),
-              kwargs...) where {K<:AbstractKDEMethod, T}
+              kwargs...) where {K<:AbstractKDEMethod, N}
     @nospecialize method bounds
-    info = multivariateinfo_type_from_axis_eltypes(T)(method)
+    info = multivariateinfo_type_from_axis_eltypes(map(eltype, data)...)(method)
     info.bounds = bounds
-
-    # Convert the input bounds to the required canonical representation
-    info.domain = domain = KernelDensityEstimation.bounds((data,), bounds)
-    info.nbins = isnothing(nbins) ? nothing : (nbins,)
-    info.neffective = neff = effective_samples((data,), domain, weights)
+    info.bwratio = isnothing(bwratio) ? ntuple(_ -> 8, Val(N)) : bwratio
+    info.domain = domain = KernelDensityEstimation.bounds(data, bounds)
+    info.nbins = nbins
+    info.neffective = neff = effective_samples(data, domain, weights)
 
     # Estimate bandwidth from data, as necessary
     if bandwidth isa AbstractBandwidthEstimator
         info.bandwidth_alg = bandwidth
-        bandwidth′ = KernelDensityEstimation.bandwidth(bandwidth, (data,), domain, weights)
+        bw = KernelDensityEstimation.bandwidth(bandwidth, data, domain, weights)
         m = estimator_order(typeof(method))
-        d = 1  # TODO: generalize to N-dimensional
         # Use a larger bandwidth for higher-order estimators which achieve lower bias
         # See Lewis (2019) Eqn 32, 41 and Footnote 10 (N.B. Eqn 41 and Footnote 10 use
         # different expressions) and also Hansen (2009) Sec 2.11 (which helps clarify).
-        if m > 1
-            # p = 1 // (4 + d) - 1 // (4m + d)
-            p = inv(oftype(neff, 4 + d)) - inv(oftype(neff, 4m + d))
-            bandwidth′ *= neff ^ p
+        if N == 1 && m > 1
+            # TODO: What is the correct generalization to N dimensions? Σ^(p/2) ??
+            # p = 1 // (4 + N) - 1 // (4m + N)
+            p = inv(oftype(neff, 4 + N)) - inv(oftype(neff, 4m + N))
+            bw *= neff ^ p
         end
+        info.bandwidth = bw
     else
-        bandwidth′ = convert(_unitless(T), bandwidth)
+        info.bandwidth = bandwidth
     end
-    info.bandwidth = bandwidth′
-    info.bwratio = (bwratio,)
 
     # Warn if we received any parameters which should have been consumed earlier in
     # the pipeline
     if length(kwargs) > 0
         invokelatest(_warn_unused, kwargs)::Nothing
     end
-    return (data,), weights, info
+    return data, weights, info
 end
 
 
@@ -634,7 +631,7 @@ function _edgerange_to_centers(edges::Tuple{Vararg{AbstractRange,N}}) where {N}
     end
 end
 
-function estimate(M::AbstractKDEMethod, data, weights = nothing; kwargs...)
+function estimate(M::AbstractKDEMethod, data::Tuple{Vararg{AbstractVector}}, weights = nothing; kwargs...)
     return estimate(M, init(M, data, weights; kwargs...)...)
 end
 
@@ -1008,8 +1005,9 @@ function kde(data;
         bc = isnothing(boundary) ? Open : boundary
         bounds = (lo, hi, bc)
     end
-    estim, _ = estimate(method, data, weights;
-                        bounds, nbins, bandwidth, bwratio)
+    estim, _ = estimate(method, (data,), weights; bounds, bandwidth,
+                        nbins = isnothing(nbins) ? nothing : (nbins,),
+                        bwratio = (bwratio,))
 
     # The pipeline is not perfectly norm-preserving, so renormalize before returning to
     # the user.
