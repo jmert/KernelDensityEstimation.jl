@@ -59,6 +59,12 @@ K_αd = kde(chain_αd; weights = chain_weight, lo = -1.0, hi =  0.0, boundary = 
 K_αs = kde(chain_αs; weights = chain_weight, lo = -1.0, hi =  0.0, boundary = :closed)
 K_ε  = kde(chain_ε;  weights = chain_weight, lo = -1.0, hi =  1.0, boundary = :closed)
 
+K_r_Ad = kde(chain_r, chain_Ad; weights = chain_weight,
+             bounds = ((0.0, Inf, :closedleft), (0.0, Inf, :closedleft)))
+K_r_As = kde(chain_r, chain_As; weights = chain_weight,
+             bounds = ((0.0, Inf, :closedleft), (0.0, Inf, :closedleft)))
+K_Ad_As = kde(chain_Ad, chain_As; weights = chain_weight,
+             bounds = ((0.0, Inf, :closedleft), (0.0, Inf, :closedleft)))
 
 # !!!!!!!!!!
 # !! NOTE !!
@@ -102,7 +108,13 @@ kws_prior = (; linewidth = 1, linestyle = :dash, color = :blue)
 dust_label = L"$A_\mathrm{dust}$ @ $\ell=80$ & 353GHz [$\mu K^2$]"
 sync_label = L"$A_\mathrm{sync}$ @ $\ell=80$ & 23GHz [$\mu K^2$]"
 
-peaknorm(K::KDE.UnivariateKDE) = KDE.UnivariateKDE(K.x, K.f ./ maximum(K.f))
+peaknorm(K::KDE.MultivariateKDE) = typeof(K)(K.axes, K.density ./ maximum(K.density))
+
+function hpd(K::KDE.MultivariateKDE, levels=[0.68, 0.95])
+    s = sort(vec(K.density), rev = true)
+    c = cumsum(s) ./ sum(s)
+    return [s[searchsortedfirst(c, l)] for l in levels]
+end
 
 #############
 # large grid
@@ -114,7 +126,7 @@ ax_r = let ax = Axis(large_grid[1, 1], aspect = 1)
     hidexdecorations!(ax, ticks = false)
     ax.ylabel = L"L / L_\mathrm{peak}"
     xlims!(ax, 0, 0.18)
-    ylims!(ax, 0, nothing)
+    ylims!(ax, 0, 10.5 / 10)
     ax.xticks = 0:0.04:0.16
     ax.yticks = 0:0.2:1
     ax
@@ -125,7 +137,7 @@ ax_Ad = let ax = Axis(large_grid[2, 2])
     hidexdecorations!(ax, ticks = false)
     hideydecorations!(ax, ticks = false)
     xlims!(ax, 0, 11)
-    ylims!(ax, 0, nothing)
+    ylims!(ax, 0, 8.5 / 7.5)
     ax.xticks = 0:2:10
     ax.yticks = 0:0.2:1
     ax
@@ -134,7 +146,7 @@ ax_As = let ax = Axis(large_grid[3, 3])
     lines!(ax, peaknorm(K_As); kws_like...)
     hideydecorations!(ax, ticks = false)
     xlims!(ax, 0, 8)
-    ylims!(ax, 0, nothing)
+    ylims!(ax, 0, 8.5 / 7.5)
     ax.xticks = 0:2:8
     ax.yticks = 0:0.2:1
     ax.xlabel = sync_label
@@ -144,9 +156,7 @@ end
 # lower triangle of parameter correlations
 
 ax_r_Ad = let ax = Axis(large_grid[2, 1])
-    # KDE defaults to bwratio = 8, so factor of 16 × Δx is just 2 × bandwidth
-    cellsize = 16 .* (step(K_r.x), step(K_Ad.x))
-    hexbin!(ax, chain_r, chain_Ad; weights, cellsize, colormap = Reverse(:greys))
+    contour!(ax, K_r_Ad, levels = hpd(K_r_Ad); kws_like...)
     hidexdecorations!(ax, ticks = false)
     ax.ylabel = dust_label
     xlims!(ax, 0, 0.18)
@@ -156,9 +166,7 @@ ax_r_Ad = let ax = Axis(large_grid[2, 1])
     ax
 end
 ax_r_As = let ax = Axis(large_grid[3, 1])
-    # KDE defaults to bwratio = 8, so factor of 16 × Δx is just 2 × bandwidth
-    cellsize = 16 .* (step(K_r.x), step(K_As.x))
-    hexbin!(ax, chain_r, chain_As; weights, cellsize, colormap = Reverse(:greys))
+    contour!(ax, K_r_As, levels = hpd(K_r_As); kws_like...)
     ax.xlabel = L"r"
     ax.ylabel = sync_label
     xlims!(ax, 0, 0.18)
@@ -168,9 +176,7 @@ ax_r_As = let ax = Axis(large_grid[3, 1])
     ax
 end
 ax_Ad_As = let ax = Axis(large_grid[3, 2])
-    # KDE defaults to bwratio = 8, so factor of 16 × Δx is just 2 × bandwidth
-    cellsize = 16 .* (step(K_Ad.x), step(K_As.x))
-    hexbin!(ax, chain_Ad, chain_As; weights, cellsize, colormap = Reverse(:greys))
+    contour!(ax, K_Ad_As, levels = hpd(K_Ad_As); kws_like...)
     hideydecorations!(ax, ticks = false)
     ax.xlabel = dust_label
     xlims!(ax, 0, 11)
