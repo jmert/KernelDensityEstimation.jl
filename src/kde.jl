@@ -128,6 +128,49 @@ bounds(data::Tuple{AbstractVector}, spec::BoundsArgs) = bounds(data, (spec,))
 
 
 """
+    neff = effective_samples(data, bounds, weights = nothing)
+
+Calculate the effective sample size of the given `weights` using the Kish effective
+sample size definition
+
+```math
+    n_\\mathrm{eff} = \\sum w_i / \\sum w_i^2
+```
+
+where weights corresponding to `data` not within the given `bounds` are skipped.
+
+## Extended help
+
+See also:
+- <https://search.r-project.org/CRAN/refmans/svyweight/html/eff_n.html>
+- <https://en.wikipedia.org/wiki/Weighted_arithmetic_mean#Reliability_weights>
+"""
+function effective_samples(data::Tuple{Vararg{AbstractVector,N}},
+                           bounds::Tuple{Vararg{BoundsSpec,N}},
+                           weights::Union{Nothing,AbstractVector} = nothing) where {N}
+    Z = ntuple(identity, Val(N))
+    eltypes = map(_unitless ∘ eltype, data)
+    U = typeof(mapreduce(oneunit, *, eltypes))
+
+    I = eachindex(data...)
+    if !isnothing(weights)
+        I = eachindex(I, weights)
+    end
+    wsum = zero(U)
+    wsqr = zero(U)
+    for ii in I
+        indomain = mapreduce(&, Z) do j
+            (bounds[j][1] ≤ @inbounds(data[j][ii]) ≤ bounds[j][2])::Bool
+        end
+        indomain || continue
+        wsum += isnothing(weights) ? one(wsum) : weights[ii]
+        wsqr += isnothing(weights) ? one(wsqr) : weights[ii]^2
+    end
+    return wsum^2 / wsqr
+end
+
+
+"""
     MultivariateKDE{T, N, R<:Tuple{Vararg{AbstractRange,N}, V<:AbstractVector{T}} <: AbstractKDE{T, N}
 
 ## Fields
@@ -493,29 +536,11 @@ function init(method::K,
     # Convert the input bounds to the required canonical representation
     info.domain = domain = KernelDensityEstimation.bounds((data,), bounds)
     info.nbins = isnothing(nbins) ? nothing : (nbins,)
-    lo′, hi′, boundary′ = domain[1]
-
-    # Calculate the effective sample size, based on weights and the bounds, using the
-    # Kish effective sample size definition:
-    #
-    #   n_eff = sum(weights)^2 / sum(weights .^ 2)
-    #
-    # https://search.r-project.org/CRAN/refmans/svyweight/html/eff_n.html
-    # https://en.wikipedia.org/wiki/Weighted_arithmetic_mean#Reliability_weights
-    wsum = zero(_unitless(T))
-    wsqr = zero(wsum)
-    I = isnothing(weights) ? eachindex(data) : eachindex(data, weights)
-    @simd for ii in I
-        x = @inbounds data[ii]
-        w = isnothing(weights) ? one(wsum) : oftype(wsum, @inbounds weights[ii])
-        keep = lo′ ≤ x ≤ hi′
-        wsum += ifelse(keep, w, zero(wsum))
-        wsqr += ifelse(keep, w^2, zero(wsqr))
-    end
-    info.neffective = neff = wsum^2 / wsqr
+    info.neffective = neff = effective_samples((data,), domain, weights)
 
     # Estimate bandwidth from data, as necessary
     if bandwidth isa AbstractBandwidthEstimator
+        lo′, hi′, boundary′ = domain[1]
         info.bandwidth_alg = bandwidth
         bandwidth′ = KernelDensityEstimation.bandwidth(
                 bandwidth, data, lo′, hi′, boundary′; weights)

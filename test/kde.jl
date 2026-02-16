@@ -372,37 +372,50 @@ end
 
 @testset "Weighting" begin
     rv = rv_norm_x
-    N = length(rv)
+    o32 = ones(Float32, length(rv))
 
-    Nlen = Float64(N)
+    Nlen = Float64(length(rv))
     Npos = Float64(count(>=(0), rv))
     weight1 = ones(length(rv))
     weight2 = 2 .* weight1
     wpositive = [1.0 + (x ≥ 0) for x in rv]
 
-    # shortcut to avoid repeating ourselves...
-    _initinfo(v, args...; kwargs...) = KDE.init(KDE.BasicKDE(), v, args...; kwargs...)[3]
+    @testset "Effective sample size ($(N)D)" for N in 1:3
+        # using weight values
+        data = (rv, (o32 for _ in 2:N)...)
+        bounds = ((-10.0, 10.0, :open), ((0, 2, :closed) for _ in 2:N)...)
+        @test KDE.effective_samples(data, bounds) === Nlen
+        @test KDE.effective_samples(data, bounds, nothing) === Nlen
+        @test KDE.effective_samples(data, bounds, weight1) === Nlen
+        @test KDE.effective_samples(data, bounds, weight2) === Nlen
 
-    # using weight values
-    @test _initinfo(rv).neffective === Nlen
-    @test _initinfo(rv, nothing).neffective === Nlen
-    @test _initinfo(rv, weight1).neffective === Nlen
-    @test _initinfo(rv, weight2).neffective === Nlen
+        # weight values with bounds that exclude data
+        bounds0 = ((0.0, 10.0, :open), ((0, 2, :closed) for _ in 2:N)...)
+        @test KDE.effective_samples(data, bounds0) === Npos
+        @test KDE.effective_samples(data, bounds0, nothing) === Npos
+        @test KDE.effective_samples(data, bounds0, weight1) === Npos
+        @test KDE.effective_samples(data, bounds0, weight2) === Npos
 
-    # weight values with bounds that exclude data
-    @test _initinfo(rv, nothing; bounds = (0.0, nothing)).neffective === Npos
-    @test _initinfo(rv, weight1; bounds = (0.0, nothing)).neffective === Npos
-    @test _initinfo(rv, weight2; bounds = (0.0, nothing)).neffective === Npos
+        # weight type differing from data type
+        @test KDE.effective_samples(data, bounds, Int.(weight1)) === Nlen
+        @test KDE.effective_samples(data, bounds, Float32.(weight1)) === Nlen
 
-    # weight type differing from data type
-    @test _initinfo(rv, Int.(weight1)).neffective === Nlen
-    @test _initinfo(rv, Float32.(weight1)).neffective === Nlen
+        # having non-uniform weights leads to a smaller effective sample size (for the same
+        # number of samples)
+        neff1 = KDE.effective_samples(data, bounds, weight1)
+        neff2 = KDE.effective_samples(data, bounds, wpositive)
+        @test neff1 > neff2
 
-    # having non-uniform weights leads to a smaller effective sample size (for the same
-    # number of samples)
-    info1 = _initinfo(rv, weight1)
-    info2 = _initinfo(rv, wpositive)
-    @test info1.neffective > info2.neffective
+        # implicit weights are unitless even if data has units
+        units = ((1.0u"m"^i for i in 1:N)...,)
+        udata = map(*, data, units)
+        ubounds = map((b, u) -> (b[1] * u, b[2] * u, b[3]), bounds, units)
+        @test KDE.effective_samples(udata, ubounds) == Nlen
+
+        # result type is properly inferrable
+        @test @inferred(KDE.effective_samples(data, bounds)) isa Float64
+        @test @inferred(KDE.effective_samples(udata, ubounds)) isa Float64
+    end
 
     # Bandwidth estimation accounts for weights
     @testset "$(nameof(typeof(bandwidth)))" for bandwidth in (KDE.SilvermanBandwidth(), KDE.ISJBandwidth())
