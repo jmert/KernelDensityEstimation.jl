@@ -544,11 +544,14 @@ function init(method::K,
         # Use a larger bandwidth for higher-order estimators which achieve lower bias
         # See Lewis (2019) Eqn 32, 41 and Footnote 10 (N.B. Eqn 41 and Footnote 10 use
         # different expressions) and also Hansen (2009) Sec 2.11 (which helps clarify).
-        if N == 1 && m > 1
-            # TODO: What is the correct generalization to N dimensions? Σ^(p/2) ??
+        if m > 1
             # p = 1 // (4 + N) - 1 // (4m + N)
             p = inv(oftype(neff, 4 + N)) - inv(oftype(neff, 4m + N))
-            bw *= neff ^ p
+            if N == 1
+                bw *= neff ^ p
+            else
+                rmul!(bw.UL, neff ^ 0.5p)
+            end
         end
         info.bandwidth = bw
     else
@@ -1006,16 +1009,16 @@ end
 estimator_order(::Type{<:MultiplicativeBiasKDE}) = 2
 
 function estimate(method::MultiplicativeBiasKDE,
-                  data::Tuple{AbstractVector},
+                  data::Tuple{Vararg{AbstractVector,N}},
                   weights::Union{Nothing, <:AbstractVector},
-                  info::UnivariateKDEInfo)
+                  info::MultivariateKDEInfo{U,N}) where {U,N}
     binned, info = estimate(method.binning, data, weights, info)
     return estimate(method, binned, info)
 end
-function estimate(method::MultiplicativeBiasKDE, binned::UnivariateKDE, info::UnivariateKDEInfo)
+function estimate(method::MultiplicativeBiasKDE, binned::MultivariateKDE{<:Any,N}, info::MultivariateKDEInfo{<:Any,N}) where {N}
     # generate pilot KDE
     pilot, info = estimate(method.method, binned, info)
-    I = eachindex(pilot.f)
+    I = eachindex(pilot.density)
 
     T = _invunit(eltype(binned))
     # use the pilot KDE to flatten the unsmoothed histogram
@@ -1109,7 +1112,7 @@ function kde(data::AbstractVector;
 end
 
 function kde(x1::AbstractVector, xn::AbstractVector...;
-             weights = nothing, method::AbstractKDEMethod = LinearBoundaryKDE(),
+             weights = nothing, method::AbstractKDEMethod = MultiplicativeBiasKDE(),
              bounds = nothing, bandwidth = SilvermanBandwidth(), bwratio = nothing,
              nbins = nothing)
     !isnothing(weights) && checkbounds(x1, eachindex(weights))
