@@ -6,7 +6,7 @@ of the various algorithms used.
 A typical user of the package's public interface should be able to skip this section.
 
 - [Gaussian Truncation](gaussian_trunc.md)
-
+- [Linear Boundary Correction](linear_boundary.md)
 
 ## References
 

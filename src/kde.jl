@@ -833,9 +833,9 @@ end
 estimator_order(::Type{<:LinearBoundaryKDE}) = 1
 
 function estimate(method::LinearBoundaryKDE,
-                  data::Tuple{AbstractVector},
+                  data::Tuple{Vararg{AbstractVector,N}},
                   weights::Union{Nothing, <:AbstractVector},
-                  info::UnivariateKDEInfo)
+                  info::MultivariateKDEInfo{U,N}) where {U,N}
     binned, info = estimate(method.binning, data, weights, info)
     return estimate(method, binned, info)
 end
@@ -847,40 +847,132 @@ function estimate(method::LinearBoundaryKDE, binned::UnivariateKDE, info::Univar
     # see Eqn 12 & 16 of Lewis (2019)
     #   N.B. the denominator of A₀ should have [W₂]⁻¹ instead of W₂
     kx, K = something(info.kernel)
+    K = copy(K)
     KI = eachindex(K)
     R = eltype(K)
     K̂ = plan_conv(f, K)
 
+    # W₀ = K_h * B, in text following Eqn 13
     Θ = fill!(similar(f, R), one(R))
-    μ₀ = conv(Θ, K̂, ConvShape.SAME)
+    W₀ = conv(Θ, K̂, ConvShape.SAME)
 
+    # W₁^i = K_h^i * B, in text following Eqn 13
+    # and
+    # f_i^(1) implied in Eqn 12
     @simd for ii in KI
         @inbounds K[ii] *= kx[ii]
     end
     replan_conv!(K̂, K)
-    μ₁ = conv(Θ, K̂, ConvShape.SAME)
+    W₁ = conv(Θ, K̂, ConvShape.SAME)
     f′ = conv(h, K̂, ConvShape.SAME)
 
+    # W₂^ij = K_h^ij * B, in text following Eqn 13
     @simd for ii in KI
         @inbounds K[ii] *= kx[ii]
     end
     replan_conv!(K̂, K)
-    μ₂ = conv(Θ, K̂, ConvShape.SAME)
+    W₁₁ = conv(Θ, K̂, ConvShape.SAME)
 
     # Function to force f̂ to be positive — see Eqn. 17 of Lewis (2019)
     # N.B. Mathematically f from basic KDE is strictly non-negative, but numerically we
     #      frequently find small negative values. The following only works when it is truly
     #      non-negative.
+    maxratio = -log(sqrt(eps(one(eltype(f)))))
     @simd for ii in eachindex(f)
         @inbounds begin
             f₀ = max(f[ii], zero(eltype(f)))
-            f₁ = f₀ / μ₀[ii]
-            f₂ = (μ₂[ii] * f[ii] - μ₁[ii] * f′[ii]) / (μ₀[ii] * μ₂[ii] - μ₁[ii]^2)
-            f[ii] = iszero(f₁) ? f₁ : f₁ * exp(f₂ / f₁ - one(f₁))
+            f̄ = f₀ / W₀[ii]
+            f̂ = (W₁₁[ii] * f[ii] - W₁[ii] * f′[ii]) / (W₀[ii] * W₁₁[ii] - W₁[ii]^2)
+            f[ii] = iszero(f̄) ? f̄ : f̄ * exp(min(f̂ / f̄, maxratio) - one(f̄))
         end
     end
 
     return UnivariateKDE(x, f), info
+end
+
+function estimate(method::LinearBoundaryKDE, binned::BivariateKDE, info::BivariateKDEInfo)
+    h = binned.density
+    basic, info = estimate(BasicKDE(method.binning), binned, info)
+    xs, f = basic.axes, basic.density
+
+    # apply a linear boundary correction
+    # see Eqn 12 & 16 of Lewis (2019)
+    #   N.B. the denominator of A₀ should have [W₂]⁻¹ instead of W₂
+    kernel = something(info.kernel)
+    kxs, K = kernel.axes, kernel.density
+    KI = CartesianIndices(K)
+    R = eltype(kernel)
+    K̂ = plan_conv(f, K)
+
+    # W₀ = K_h * B, in text following Eqn 13
+    Θ = fill!(similar(f, R), one(R))
+    W₀ = conv(Θ, K̂, ConvShape.SAME)
+
+    # W₁^i = K_h^i * B, in text following Eqn 13
+    # and
+    # f_i^(1) implied in Eqn 12
+    zipped = ntuple(Val(2)) do i
+        kxi = kxs[i]
+        Ki = copy(K)
+        @simd for I in KI
+            @inbounds Ki[I] *= kxi[I[i]]
+        end
+        replan_conv!(K̂, Ki)
+        conv(Θ, K̂, ConvShape.SAME), conv(h, K̂, ConvShape.SAME)
+    end
+    W₁, W₂ = map(first, zipped)
+    f₁, f₂ = map(last, zipped)
+
+    # W₂^ij = K_h^ij * B, in text following Eqn 13
+    dims = ((1, 1), (1, 2), (2, 2))
+    W₁₁, W₁₂, W₂₂ = ntuple(Val(3)) do k
+        i, j = dims[k]
+        kxi = kxs[i]
+        kxj = kxs[j]
+        Kij = copy(K)
+        @simd for I in KI
+            @inbounds Kij[I] *= kxi[I[i]] * kxj[I[j]]
+        end
+        replan_conv!(K̂, Kij)
+        conv(Θ, K̂, ConvShape.SAME)
+    end
+
+    # TODO: sort out if this is the correct way to set an automatic scale
+    maxratio = -log(sqrt(eps(one(eltype(f)))))
+    for I in CartesianIndices(f)
+        f₀ = max(f[I], zero(eltype(f)))
+        f̄ = f₀ / W₀[I]
+        D = W₀[I] * (W₁₁[I] * W₂₂[I] - W₁₂[I]^2) - W₁[I]^2 * W₂₂[I] - W₂[I]^2 * W₁₁[I] + 2 * W₁[I] * W₂[I] * W₁₂[I]
+        A₀ = (W₁₁[I] * W₂₂[I] - W₁₂[I]^2)
+        A₁ = (W₂[I] * W₁₂[I] - W₁[I] * W₂₂[I])
+        A₂ = (W₁[I] * W₁₂[I] - W₂[I] * W₁₁[I])
+        f̂ = (A₀ * f[I] + A₁ * f₁[I] + A₂ * f₂[I]) / D
+        f[I] = iszero(f̄) ? f̄ : f̄ * exp(min(f̂ / f̄, maxratio) - one(f̄))
+    end
+
+    return typeof(binned)(xs, f), info
+end
+
+function estimate(method::LinearBoundaryKDE, binned::MultivariateKDE{<:Any,N}, info::MultivariateKDEInfo{<:Any,N}) where {N}
+    h = binned.density
+    basic, info = estimate(BasicKDE(method.binning), binned, info)
+    xs, f = basic.axes, basic.density
+
+    # apply only the normalization part of the linear boundary condition
+    # TODO: implement the full linear boundary correction in higher dimensions
+    kernel = something(info.kernel)
+
+    # W₀ = K_h * B, in text following Eqn 13
+    R = eltype(kernel)
+    Θ = fill!(similar(f, R), one(R))
+    K̂ = plan_conv(f, kernel.density)
+    W₀ = conv(Θ, K̂, ConvShape.SAME)
+
+    for I in CartesianIndices(f)
+        f[I] = max(f[I], zero(eltype(f))) / W₀[I]
+    end
+
+    return typeof(binned)(xs, f), info
 end
 
 
@@ -1017,7 +1109,7 @@ function kde(data::AbstractVector;
 end
 
 function kde(x1::AbstractVector, xn::AbstractVector...;
-             weights = nothing, method::AbstractKDEMethod = BasicKDE(),
+             weights = nothing, method::AbstractKDEMethod = LinearBoundaryKDE(),
              bounds = nothing, bandwidth = SilvermanBandwidth(), bwratio = nothing,
              nbins = nothing)
     !isnothing(weights) && checkbounds(x1, eachindex(weights))
