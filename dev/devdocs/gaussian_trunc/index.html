@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Gaussian Truncation · Kernel Density Estimation</title><meta name="title" content="Gaussian Truncation · Kernel Density Estimation"/><meta property="og:title" content="Gaussian Truncation · Kernel Density Estimation"/><meta property="twitter:title" content="Gaussian Truncation · Kernel Density Estimation"/><meta name="description" content="Documentation for Kernel Density Estimation."/><meta property="og:description" content="Documentation for Kernel Density Estimation."/><meta property="twitter:description" content="Documentation for Kernel Density Estimation."/><script data-outdated-warner src="../../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.050/juliamono.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.8/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL="../.."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../../assets/documenter.js"></script><script src="../../search_index.js"></script><script src="../../siteinfo.js"></script><script src="../../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-mocha.css" data-theme-name="catppuccin-mocha"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-macchiato.css" data-theme-name="catppuccin-macchiato"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-frappe.css" data-theme-name="catppuccin-frappe"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/catppuccin-latte.css" data-theme-name="catppuccin-latte"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../../assets/themeswap.js"></script><link href="../../assets/citations.css" rel="stylesheet" type="text/css"/><link href="../../assets/overrides.css" rel="stylesheet" type="text/css"/></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../../"><img class="docs-light-only" src="../../assets/logo.svg" alt="Kernel Density Estimation logo"/><img class="docs-dark-only" src="../../assets/logo-dark.svg" alt="Kernel Density Estimation logo"/></a><div class="docs-package-name"><span class="docs-autofit"><a href="../../">Kernel Density Estimation</a></span></div><button class="docs-search-query input is-rounded is-small is-clickable my-2 mx-auto py-1 px-2" id="documenter-search-query">Search docs (Ctrl + /)</button><ul class="docs-menu"><li><a class="tocitem" href="../../">Kernel Density Estimation</a></li><li><a class="tocitem" href="../../userguide/">User Guide</a></li><li><a class="tocitem" href="../../extensions/">Package Extensions</a></li><li><a class="tocitem" href="../../explain/">Explanation</a></li><li><a class="tocitem" href="../../showcase/">Showcase</a></li><li><a class="tocitem" href="../../api/">API</a></li><li><a class="tocitem" href="../../releasenotes/">Release Notes</a></li><li><a class="tocitem" href="../">Developer Documentation</a><ul><li class="is-active"><a class="tocitem" href>Gaussian Truncation</a><ul class="internal"><li><a class="tocitem" href="#Univariate-(1D)"><span>Univariate (1D)</span></a></li><li><a class="tocitem" href="#Multivariate-(2D-and-ND)"><span>Multivariate (2D &amp; ND)</span></a></li></ul></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><a class="docs-sidebar-button docs-navbar-link fa-solid fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a href="../">Developer Documentation</a></li><li class="is-active"><a href>Gaussian Truncation</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Gaussian Truncation</a></li></ul></nav><div class="docs-right"><a class="docs-settings-button docs-navbar-link fa-solid fa-gear" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-article-toggle-button fa-solid fa-chevron-up" id="documenter-article-toggle-button" href="javascript:;" title="Collapse all docstrings"></a></div></header><article class="content" id="documenter-page"><h1 id="Gaussian-Truncation"><a class="docs-heading-anchor" href="#Gaussian-Truncation">Gaussian Truncation</a><a id="Gaussian-Truncation-1"></a><a class="docs-heading-anchor-permalink" href="#Gaussian-Truncation" title="Permalink"></a></h1><ul><li><a href="#Univariate-(1D)">Univariate (1D)</a></li><li><a href="#Multivariate-(2D-and-ND)">Multivariate (2D &amp; ND)</a></li></ul><details class="admonition is-details" id="Setup-code-6cce0810240e0400"><summary class="admonition-header">Setup code<a class="admonition-anchor" href="#Setup-code-6cce0810240e0400" title="Permalink"></a></summary><div class="admonition-body"><pre><code class="language-julia hljs">using CairoMakie
+
+using Distributions
+using LinearAlgebra
+
+function gauss1(x; σ)
+    𝒟 = Normal(zero(σ), σ)
+    return pdf.(𝒟, x)
+end
+
+function gauss2(x, y; Σ)
+    𝒟 = MvNormal(fill!(similar(Σ, 2), 0), Σ)
+    xy = Iterators.product(x, y)
+    return map(Iterators.product(x, y)) do xy
+        pdf(𝒟, [xy...])
+    end
+end</code></pre></div></details><h2 id="Univariate-(1D)"><a class="docs-heading-anchor" href="#Univariate-(1D)">Univariate (1D)</a><a id="Univariate-(1D)-1"></a><a class="docs-heading-anchor-permalink" href="#Univariate-(1D)" title="Permalink"></a></h2><h3 id="Definition"><a class="docs-heading-anchor" href="#Definition">Definition</a><a id="Definition-1"></a><a class="docs-heading-anchor-permalink" href="#Definition" title="Permalink"></a></h3><p>Given the variance <span>$σ^2$</span>, the 1D Gaussian distribution is defined for <span>$x ∈ ℝ$</span> to be</p><p class="math-container">\[\begin{align}
+    G(x; σ) &amp;≡ \frac{1}{\sqrt{2πσ^2}} e^{-x^2 / 2σ^2}
+    \label{eqn:gaussian1}
+\end{align}\]</p><p>where we assume the distribution has mean equal to zero (<span>$μ = 0$</span>).</p><p>Since the Gaussian function is defined over the entire real line, we must truncate it to a finite size before convolution. We choose to truncate at the <span>$±4σ$</span> bounds, which simply means that the domain is restricted to <span>$x ∈ [-4σ, +4σ]$</span>.</p><p>We choose <span>$σ = h$</span> (the bandwidth) and guarantee an odd, whole number of points in the discrete kernel by letting</p><p class="math-container">\[\begin{align}
+    \{x_i\} &amp;= -n_h \Delta x + i \Delta x  &amp;\text{for } i &amp;∈ \{0, 1, …, 2n_h\}
+\end{align}\]</p><p>where</p><p class="math-container">\[    n_h = \left\lceil \frac{4h}{\Delta x} \right\rceil\]</p><p>and <span>$\Delta x$</span> is the bin size of the histogrammed density.</p><h2 id="Multivariate-(2D-and-ND)"><a class="docs-heading-anchor" href="#Multivariate-(2D-and-ND)">Multivariate (2D &amp; ND)</a><a id="Multivariate-(2D-and-ND)-1"></a><a class="docs-heading-anchor-permalink" href="#Multivariate-(2D-and-ND)" title="Permalink"></a></h2><h3 id="Definition-2"><a class="docs-heading-anchor" href="#Definition-2">Definition</a><a class="docs-heading-anchor-permalink" href="#Definition-2" title="Permalink"></a></h3><p>Given a covariance matrix <span>$𝚺$</span>, the multivariate Gaussian distribution is defined for <span>$𝒙 ∈ ℝ^n$</span> to be</p><p class="math-container">\[\begin{align}
+    G(𝒙; 𝚺) &amp;≡ \frac{1}{\sqrt{(2π)^n |𝚺|}} e^{-𝒙^⊤ 𝚺^{-1} 𝒙 / 2}
+    \label{eqn:gaussian}
+\end{align}\]</p><p>where we assume the distribution has mean equal to zero (<span>$𝝁 = 𝟎$</span>) and <span>$|𝚺| = \det 𝚺$</span>. Like the univariate case, the multivariate Gaussian is unbounded in all directions and must be truncated to a finite range to be of practical use. We extend the univariate truncation definition that <span>$x ∈ [-4σ, +4σ]$</span> in the following way.</p><p>We start with the definition from 1D and note that as long as <span>$𝚺$</span> is diagonal, the marginalized density over dimensions is equivalent (up to normalization) to the corresponding 1D Gaussian, as shown in Figure 1.</p><pre><code class="language-julia hljs"># Define (co)variances in x, y dimensions
+σ_x, σ_y = 2.0, 1.0
+Σ = Diagonal([σ_x^2, σ_y^2])
+
+# Construct the 2D Gaussian distribution
+xx = range(-10, 10, step = 0.1)
+yy = range(-6, 6, step = 0.1)
+kern = gauss2(xx, yy; Σ)
+# and the corresponding 1D marginal distributions
+kern_x = gauss1(xx; σ = σ_x)
+kern_y = gauss1(yy; σ = σ_y)</code></pre><p>Given this equivalence, we choose to <em>define</em> the <span>$4σ$</span> boundary in the multidimensional sense to be the contour level which results in the same marginalized truncation for an uncorrelated covariance matrix.</p><pre><code class="language-julia hljs"># transform a 4σ circle into ellipse using the Cholesky decomposition
+ρ = 4.0  # 4σ level
+L = cholesky(Σ).L
+contour_4σ = mapreduce(hcat, range(0, 2π, 250)) do θ
+    s, c = ρ .* sincos(θ)
+    return L * [c,s]
+end</code></pre><figure><img src="../gaussian_trunc_2dmarginal.svg" alt/><figcaption><p><strong>Figure 1</strong>: A 2D Gaussian with diagonal covariance matrix (bottom-left) and the two marginal densities (solid blue) that result from summing [and renormalizing] along each axis (top and right), along with the corresponding 1D Gaussian (dashed yellow) to highlight the equivalence. The 1D <span>$4σ$</span> points are indicated (dashed red) in the marginal densities and extended across the 2D density where they contain the 2D ellipse (solid red) that we use to define the <span>$4σ$</span> contour in higher dimensions.</p></figcaption></figure><details class="admonition is-details" id="Plotting-Code-9492f50ed74356ac"><summary class="admonition-header">Plotting Code<a class="admonition-anchor" href="#Plotting-Code-9492f50ed74356ac" title="Permalink"></a></summary><div class="admonition-body"><pre><code class="language-julia hljs"># 1D Gaussians from marginalizing 2D Gaussian
+m2_x = sum(kern, dims = 2)[:] .* step(yy)
+m2_y = sum(kern, dims = 1)[:] .* step(xx)
+
+## Plotting
+fig = Figure(size = (600, 600))
+
+# 2D density
+ax = Axis(fig[2, 1])
+heatmap!(ax, xx, yy, kern, colormap = Reverse(:grays), rasterize = true)
+
+# 1D marginalized density along x-axis
+axx = Axis(fig[1, 1], xautolimitmargin = (0.0, 0.0), yautolimitmargin = (0.05, 0.05))
+lines!(axx, xx, m2_x, color = Cycled(1), label = &quot;2D Marginal&quot;, linewidth = 2)
+lines!(axx, xx, kern_x, color = Cycled(2), label = &quot;1D&quot;, linestyle = :dash)
+hidexdecorations!(axx, grid = false, ticks = false)
+
+# 1D marginalized density along y-axis, rotated to project through 2D density
+axy = Axis(fig[2, 2], xautolimitmargin = (0.05, 0.05), yautolimitmargin = (0.0, 0.0))
+lines!(axy, m2_y, yy, color = Cycled(1), linewidth = 2)
+lines!(axy, kern_y, yy, color = Cycled(2), linestyle = :dash)
+hideydecorations!(axy, grid = false, ticks = false)
+
+# add 4σ contour and corresponding bounding box to the 2D density plot
+lines!(ax, contour_4σ, color = (:firebrick3, 0.5), label = &quot;4σ contour&quot;)
+kws = (; color = (:firebrick3, 0.5), linestyle = :dash, depth_shift = -1)
+vlines!(ax,  4σ_x .* [-1, 1]; kws...)
+vlines!(axx, 4σ_x .* [-1, 1]; kws...)
+hlines!(ax,  4σ_y .* [-1, 1]; kws...)
+hlines!(axy, 4σ_y .* [-1, 1]; kws...)
+
+# construct a shared legend across all three axes
+l1 = Makie.get_labeled_plots(axx, merge = true, unique = true)
+l2 = Makie.get_labeled_plots(ax,  merge = true, unique = true)
+lplt = vcat(l1[1], l2[1])
+llbl = vcat(l1[2], l2[2])
+leg = Legend(fig[1, 2], lplt, llbl; tellwidth = false, framevisible = false)
+
+# link axes
+linkxaxes!(ax, axx)
+linkyaxes!(ax, axy)
+map!(identity, axx.xticks, ax.xticks)  # force equivalence of ticks across linked axes
+map!(identity, axy.xticks, ax.yticks)
+ax.xticks = -8:4:8
+# adjust gaps to make more compact
+colgap!(fig.layout, Fixed(4))
+rowgap!(fig.layout, Fixed(4))
+colsize!(fig.layout, 1, Relative(0.8))  # 80% of space to 2D plot
+rowsize!(fig.layout, 2, Aspect(1, length(yy) / length(xx)))  # square data units
+rowsize!(fig.layout, 1, Aspect(2, 1))  # marginal &quot;heights&quot; are equal
+resize_to_layout!(fig)</code></pre></div></details><p>Therefore, our goal is to obtain the [hyper]rectangle which contains the <span>$4σ$</span> contour, as shown in Figure 2, for any arbitrary covariance.</p><p>A non-diagonal covariance may be <a href="https://en.wikipedia.org/wiki/Diagonalizable_matrix#Diagonalization">diagonalized</a> via the eigenvalue decomposition, so we can do the reverse to construct a non-diagonal covaraince matrix where we know the <span>$4σ$</span> ellipse <em>a priori</em>.</p><p>Let <span>$𝑹$</span> be a rotation matrix, and let <span>$𝚺&#39;$</span> be the non-diagonal covariance constructed by applying the rotation to our diagonal covariance.</p><p class="math-container">\[    𝚺&#39; = 𝑹 𝚺 𝑹^⊤\]</p><pre><code class="language-julia hljs">θ = 22.5  # arbitrary angle, for demonstration
+R = [
+    cosd(θ) -sind(θ);
+    sind(θ)  cosd(θ)
+]
+Σ′ = R * Σ * R&#39;
+L′ = cholesky(Σ′).L
+kern′ = gauss2(xx, yy; Σ = Σ′)
+contour_4σ′ = R * contour_4σ</code></pre><p>Our problem is now:</p><blockquote><p><strong>Given the arbitrary covariance matrix <span>$𝚺&#39;$</span>, what is the bounding box <span>$𝖡 ⊂ ℝ^n = \bigotimes_i [-v_i, +v_i]$</span> which contains the <span>$4σ$</span> contour?</strong></p></blockquote><p>One might be tempted to expect that the maximum coordinate value over all rotated, scaled versions of the Cartesian unit vectors <span>$\{𝐞_j\}$</span> — i.e. the principle axes of the ellipse — would be the answer.</p><p class="math-container">\[    𝒃_i ≡ \max_j \left( ρσ_j \left| 𝑹  𝐞_j \right| \right)_i\]</p><p>Figure 2 visually demonstrates a counterexample where that this is not the case, though.</p><figure><img src="../gaussian_trunc_eigenvec.svg" alt/><figcaption><p><strong>Figure 2</strong>: Gaussian distribution with non-diagonal covariance along with a direct rotation of the <span>$4σ$</span> contour (solid red). Reducing over the principle axes of the ellipse (solid green and cyan) defines a bounding box (dashed blue) which is smaller than the box that contains the contour (dashed red).</p></figcaption></figure><details class="admonition is-details" id="Plotting-Code-1c594b0a4500622c"><summary class="admonition-header">Plotting Code<a class="admonition-anchor" href="#Plotting-Code-1c594b0a4500622c" title="Permalink"></a></summary><div class="admonition-body"><pre><code class="language-julia hljs">fig = Figure(size = (500, 500))
+
+# 2D density and directly-rotated 4σ contour
+ax = Axis(fig[1, 1])
+heatmap!(ax, xx, yy, kern′, colormap = Reverse(:grays), rasterize = true)
+lines!(ax, contour_4σ′, color = :firebrick3, label = &quot;4σ contour&quot;)
+
+# directly-rotated 4σ contour and corresponding empirical bounding box
+Bx = [extrema(contour_4σ′[1, :])...]
+By = [extrema(contour_4σ′[2, :])...]
+vlines!(ax, Bx, color = (:firebrick3, 0.8), linestyle = :dash)
+hlines!(ax, By, color = (:firebrick3, 0.8), linestyle = :dash)
+
+# principle axes of the ellipse...
+zz = [0.0, 0.0]
+v1 = ρ * σ_x .* R * [1, 0]
+v2 = ρ * σ_y .* R * [0, 1]
+arrows2d!(ax, Point2(zz), Point2(v1), argmode = :endpoint, color = :green3, label = &quot;𝐞₁&quot;)
+arrows2d!(ax, Point2(zz), Point2(v2), argmode = :endpoint, color = :cyan3, label = &quot;𝐞₂&quot;)
+# and corresponding bounding box
+vb = maximum([v1 v2], dims = 2)[:]
+poly!(ax, Rect(-abs.(vb), 2 .* vb), color = :transparent, strokecolor = :blue3,
+      strokewidth = 1.5, linestyle = :dash)
+
+rowsize!(fig.layout, 1, Aspect(1, length(yy) / length(xx)))
+resize_to_layout!(fig)</code></pre></div></details><p>The correct procedure is to directly solve the desired maximization problem. The condition for finding the maximum value over the contour line in dimension <span>$i$</span> can be expressed as maximizing the inner product</p><p class="math-container">\[\begin{align} \max_{𝒗} 𝒗^\top 𝐞_i \end{align}\]</p><p>subject to the constraint</p><p class="math-container">\[\begin{align} 𝒗^\top 𝚺^{-1} 𝒗 = ρ^2 \end{align}\]</p><p>where <span>$ρ$</span> is the <span>$σ$</span>-level contour to be found (i.e. <span>$ρ = 4$</span>), <span>$𝒗$</span> is an arbitrary vector, and <span>$𝐞_i$</span> is the Cartesian basis vector pointing along the <span>$i$</span>-th dimension&#39;s axis. Solving with the method of Lagrange multipliers:</p><p class="math-container">\[\begin{align}
+    0 &amp;= \frac{d}{d𝒗} \left[ 𝒗^\top 𝐞_i - λ \left( 𝒗^\top 𝚺^{-1} 𝒗 - ρ^2 \right) \right]
+    &amp; {}&amp;{}
+        \nonumber
+    \\
+    0 &amp;= 𝐞_i - 2λ 𝚺^{-1} 𝒗
+    &amp; {}&amp;{}
+        \nonumber
+    \\
+    𝒗 &amp;= \frac{1}{2λ} 𝚺 𝐞_i
+    &amp;
+    ρ^2 &amp;= \left( \frac{1}{2λ} 𝚺 𝐞_i \right)^⊤ 𝚺^{-1} \left( \frac{1}{2λ} 𝚺 𝐞_i \right)
+        \nonumber
+    \\
+    {}&amp;{}
+    &amp;
+    ρ^2 &amp;= \frac{1}{4λ^2} 𝐞_i^⊤ 𝚺 𝐞_i
+        \nonumber
+    \\
+    𝐞_i^⊤ 𝒗 &amp;= \frac{1}{2λ} 𝐞_i^⊤ 𝚺 𝐞_i
+    &amp;
+    \frac{1}{2λ} &amp;= \frac{ρ}{\sqrt{𝚺_{ii}}}
+        \nonumber
+    \\
+    𝐞_i^⊤ 𝒗 &amp;= ρ \sqrt{𝚺_{ii}}
+        \label{eqn:mvgauss_sigmas_cov}
+\end{align}\]</p><p>Therefore, the bounding box that contains an arbitrary multivariate Gaussian at the <span>$ρ$</span>-sigma level is simply a box whose edges lie at <span>$±ρ\sqrt{𝚺_{ii}}$</span> in the <span>$i$</span>-th dimension.</p><p>Because the Gaussian is defined in terms of its inverse covariance matrix, the implementation does not use the covariance matrix <span>$𝚺$</span> directly, instead making use of its Cholesky decomposition:</p><p class="math-container">\[\begin{align} 𝑳𝑳^⊤ ≡ 𝚺 \end{align}\]</p><p>where <span>$𝑳$</span> is a lower-triangular matrix. (See <a href="../../api/#KernelDensityEstimation.bandwidth"><code>bandwidth</code></a>.) To avoid reconstructing the covariance matrix from its Cholesky factors, we return to Eqn. <span>$\ref{eqn:mvgauss_sigmas_cov}$</span> and replace the covariance with its decomposition and simplify:</p><p class="math-container">\[\begin{align}
+    𝐞_i^⊤ 𝒗 &amp;= ρ \sqrt{𝚺_{ii}} \nonumber \\
+    𝐞_i^⊤ 𝒗 &amp;= ρ \sqrt{𝐞_i^⊤ \left(𝑳𝑳^⊤\right) 𝐞_i} \nonumber \\
+    𝐞_i^⊤ 𝒗 &amp;= ρ \sqrt{(𝑳^⊤ 𝐞_i)^⊤(𝑳^⊤ 𝐞_i)} \nonumber \\
+    𝐞_i^⊤ 𝒗 &amp;= ρ \sqrt{(𝒍_i)^⊤ 𝒍_i}
+        \qquad\text{where }\quad (𝒍_i)_n = 𝑳_{ni} \text{ (the $i$-th row of $𝑳$)} \nonumber \\
+    𝐞_i^⊤ 𝒗 &amp;= ρ \|𝒍_i\|
+\end{align}\]</p><p>We find that the square root of the <span>$i$</span>-th diagonal of the covariance can be equivalently obtained from the norm of the <span>$i$</span>-th row of its Cholesky decomposition.</p><pre><code class="language-julia hljs">bbox_4σ = dropdims(mapslices(l -&gt; ρ * sqrt(l&#39;l), L′, dims = 2), dims = 2)</code></pre><figure><img src="../gaussian_trunc_cholnorm.svg" alt/><figcaption><p><strong>Figure 3</strong>: The same Gaussian distribution and <span>$4σ$</span> contour (solid red) as shown in Figure 2 and the target bounding box that contains it (dashed red). The directly calculated bounding box (solid blue) derived from the Cholesky decomposition of the covariance matrix matches the empirical bounding box.</p></figcaption></figure><details class="admonition is-details" id="Plotting-Code-166e9b13f0a9fdd8"><summary class="admonition-header">Plotting Code<a class="admonition-anchor" href="#Plotting-Code-166e9b13f0a9fdd8" title="Permalink"></a></summary><div class="admonition-body"><pre><code class="language-julia hljs">fig = Figure(size = (500, 500))
+
+# 2D density and directly-rotated 4σ contour
+ax = Axis(fig[1, 1])
+heatmap!(ax, xx, yy, kern′, colormap = Reverse(:grays), rasterize = true)
+lines!(ax, contour_4σ′, color = :firebrick3, label = &quot;4σ contour&quot;)
+
+# directly-rotated 4σ contour and corresponding empirical bounding box
+Bx = [extrema(contour_4σ′[1, :])...]
+By = [extrema(contour_4σ′[2, :])...]
+vlines!(ax, Bx, color = (:firebrick3, 0.8), linestyle = :dash)
+hlines!(ax, By, color = (:firebrick3, 0.8), linestyle = :dash)
+
+# bounding box computed from the [Cholesky decomposition of the] covariance matrix
+poly!(ax, Rect(-abs.(bbox_4σ), 2 .* bbox_4σ), color = :transparent, strokecolor = :blue3,
+      strokewidth = 1.5)
+
+rowsize!(fig.layout, 1, Aspect(1, length(yy) / length(xx)))
+resize_to_layout!(fig)</code></pre></div></details></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Developer Documentation</a><a class="docs-footer-nextpage" href="../">Developer Documentation »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.16.1 on <span class="colophon-date" title="Wednesday 18 February 2026 04:20">Wednesday 18 February 2026</span>. Using Julia version 1.12.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
