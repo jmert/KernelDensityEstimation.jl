@@ -6,7 +6,7 @@ CurrentModule = KernelDensityEstimation
 
 ```@contents
 Pages = ["index.md"]
-Depth = 2:2
+Depth = 2:3
 ```
 
 To install KernelDensityEstimation.jl, it is recommended that you use the
@@ -19,7 +19,9 @@ pkg> registry add https://github.com/jmert/Registry.jl
 pkg> add KernelDensityEstimation
 ```
 
-## Simple kernel density estimate
+## Univariate Densities
+
+### Simple kernel density estimate
 
 ```@setup get_started
 using Distributions
@@ -79,7 +81,7 @@ save("getting_started_1.svg", fig)
 ![](getting_started_1.svg)
 ```
 
-## Densities of weighted samples
+### Densities of weighted samples
 
 In some cases, the data to be analyzed is a _weighted_ vector of data (represented as a vector of data and a
 corresponding vector of weight factors).
@@ -152,3 +154,5 @@ As expected, this shifts the resultant density estimate to the right, toward mor
     using [Kish's definition](https://search.r-project.org/CRAN/refmans/svyweight/html/eff_n.html).
     Both of the bandwidth estimators ([`SilvermanBandwidth`](@ref) and [`ISJBandwidth`](@ref)) use this definition
     in scaling the bandwidth with the (effective) sample size.
+
+## Bivariate and Multivariate Densities
