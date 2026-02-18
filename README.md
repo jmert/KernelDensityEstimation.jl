@@ -4,16 +4,14 @@
 
 # Kernel Density Estimation
 
-`KernelDensityEstimation.jl` is a package for calculating univariate (1D) kernel density estimates from vectors
-of data.
+`KernelDensityEstimation.jl` is a package for calculating kernel density estimates from vectors of data.
 Its main features (and limitations) are:
 
 - Uses a Gaussian kernel for smoothing (truncated at ``4σ``).
 - Supports closed boundaries.
 - Supports processing weighted samples.
 - Provides higher-order estimators to better capture variation in width and slope of distributions.
-- A more sophisticated bandwidth estimator than the typical Silverman rule.
-- Limited to 1D curves — does **not** support 2D densities.
+- A more sophisticated bandwidth estimator than the typical Silverman rule (only for 1D).
 
 This package largely implements the algorithms described by Lewis (2019)[^1]
 (and its corresponding Python package, [GetDist](https://pypi.org/project/getdist/)).

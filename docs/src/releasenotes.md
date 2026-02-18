@@ -25,20 +25,12 @@ Depth = 2:2
   [`Plots.jl`](https://juliahub.com/ui/Packages/General/Plots)
   ecosystem.
 
-- Various changes to the interfaces and type definitions have been made to allow for future support of bivariate (and
-  possibly multivariate) density estimates.
+- Various changes to the interfaces and type definitions have been made to allow for provisional support for bivariate
+  (and higher-dimension multivariate) density estimates.
 
-    - The `boundary` function has been removed, with all of its functionality subsumed by the
-      [`bounds`](@ref) function, which has also impacted the built-in definitions and behaviors of the `bounds`
-      methods.
-
-    - The signatures of the [`bandwidth`](@ref) and [`estimate`](@ref) interfaces have been changed to support
-      multidimensional data.
-      More notably, the returned bandwidth is now always a _unitless_ quantity (since a covariance matrix among
-      axes with different units cannot have per-element units).
-
-    - The type parameterizations of [`AbstractKDE`](@ref) and [`UnivariateKDE`](@ref) have changed in a
-      backwards-incompatible way.
+    - An [`MultivariateKDE`](@ref) type has been added to support higher dimensional density estimation.
+      [`UnivariateKDE`](@ref) and [`BivariateKDE`](@ref) are type aliases for the 1- and 2-dimensional cases, and
+      the type parameterizations (including of [`AbstractKDE`](@ref)) have changed in a backwards-incompatible way.
 
       Previously, the univariate structure had four type parameters and subtype relationship,
       ```julia
@@ -64,18 +56,23 @@ Depth = 2:2
       the supertype relationship.
       The input element type also no longer appear as an explicit type parameter.
 
-      These changes are required to align with a future definition of multivariate density estimates.
+      These changes are required to align with multivariate density estimates.
       The explicit input element type is dropped since each axis may have different element type (i.e. units) and are
       implicitly available via the axis range(s).
       In contrast, the element type of the density array is unique, so this is the natural choice to use in the
       supertype relationship.
 
+    - The `boundary` function has been removed, with all of its functionality subsumed by the
+      [`bounds`](@ref) function, which has also impacted the built-in definitions and behaviors of the `bounds`
+      methods.
+
+    - The signatures of the [`bandwidth`](@ref) and [`estimate`](@ref) interfaces have been changed to support
+      multidimensional data.
+      More notably, the returned bandwidth is now always a _unitless_ quantity (since a covariance matrix among
+      axes with different units cannot have per-element units).
+
     - [`UnivariateKDEInfo`](@ref) has been redefined as an alias of the more generic [`MultivariateKDEInfo`](@ref)
       struct.
-
-    - An **experimental** [`MultivariateKDE`](@ref) type has been added to support higher dimensional density
-      estimation.
-      [`UnivariateKDE`](@ref) and [`BivariateKDE`](@ref) are type aliases for the 1- and 2-dimensional cases.
 
 ---
 
