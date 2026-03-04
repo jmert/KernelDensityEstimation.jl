@@ -40,6 +40,13 @@ jobs:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
       - uses: julia-actions/cache@v2
+      - name: Remove package extension dependencies (for Julia <1.9)
+        if: ${{ matrix.version == 'min' }}
+        run: |
+          julia --project=test -e '
+          using Pkg
+          Pkg.rm(["CairoMakie", "Distributions", "GR", "Makie", "Plots", "UnicodePlots"])
+          '
       - uses: julia-actions/julia-downgrade-compat@v1  # @v2 not usable on Julia v1.6
         if: ${{ matrix.version == 'min' }}
       - uses: julia-actions/julia-downgrade-compat@v2
