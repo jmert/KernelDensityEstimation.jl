@@ -80,6 +80,16 @@ end
         @test stairs(Ku).plot isa Plot{stairs}
     end
 
+    # conversions for bivariate densities
+    rv2 = 2.0 .+ 0.8 .* randn(length(rv))
+    K2 = kde(rv, rv2, bounds = ((0, 1, :closed), (-Inf, Inf, :open)))
+
+    # test that invocations succeed without error
+    @test plotfunc(plot(K2).plot) === contour
+    @test plotfunc(contour(K2).plot) === contour
+    @test plotfunc(contourf(K2).plot) === contourf
+    @test plotfunc(heatmap(K2).plot) === heatmap
+
     if isdefined(Test, :detect_closure_boxes)
         ext = Base.get_extension(KDE, :KDEMakieExt)
         @test length(Test.detect_closure_boxes(ext)) == 0
@@ -93,14 +103,26 @@ end
     rv = rand(1000)
     K = kde(rv, lo = 0.0, hi = 1.0, boundary = :closed)
 
-    # simply test that invocation is not an error
-    @test plot(K) isa Plots.Plot
-    @test plot(K, linetype = :steppre) isa Plots.Plot
+    # N.B. the plot must be rendered to trigger errors
+    buf = IOBuffer()
+    sshow(x) = (show(buf, "text/html", x); String(take!(buf)))
+
+    # simply test that the plot does not error
+    @test sshow(plot(K)) isa String
+    @test sshow(plot(K, linetype = :steppre)) isa String
 
     # default labels are set
     p = plot(K)
     @test p[1][:xaxis][:guide] == "value"
     @test p[1][:yaxis][:guide] == "density"
+
+    # conversions for bivariate densities
+    rv2 = 2.0 .+ 0.8 .* randn(length(rv))
+    K2 = kde(rv, rv2, bounds = ((0, 1, :closed), (-Inf, Inf, :open)))
+
+    # test that invocations succeed without error
+    @test sshow(plot(K2)) isa String
+    @test sshow(plot(K2, seriestype = :heatmap)) isa String
 
     if isdefined(Test, :detect_closure_boxes)
         ext = Base.get_extension(KDE, :KDERecipesBaseExt)
@@ -143,6 +165,24 @@ end
     #  pattern based on https://en.wikipedia.org/wiki/ANSI_escape_code#Colors
     stripcolor(s) = replace(s, r"\e\[(\d+;)*\d*m" => "")
     @test stripcolor(str3) == stripcolor(str2)
+
+    # support for bivariate densities
+    rv1 = rand(1000)
+    rv2 = 2.0 .+ 0.8 .* randn(length(rv1))
+    K2 = kde(rv1, rv2, bounds = ((0, 1, :closed), (-Inf, Inf, :open)))
+
+    # plot from scratch
+    pc = contourplot(K2)
+    strc = termprint(pc)
+    @test strc != empty
+    @test any(!isascii, strc)
+
+    # plot into a canvas
+    pc2 = Plot(Float64[], Float64[]; xlim = (0, 1), ylim = (-1, 5))
+    contourplot!(pc2, K2)
+    strc2 = termprint(pc2)
+    @test strc2 != empty
+    @test any(!isascii, strc2)
 
     if isdefined(Test, :detect_closure_boxes)
         ext = Base.get_extension(KDE, :KDEUnicodePlotsExt)

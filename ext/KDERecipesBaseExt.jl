@@ -12,7 +12,7 @@ end
 
 @recipe function f(K::BivariateKDE)
     seriestype --> :contour
-    return K.x, K.y, K.f
+    return K.x, K.y, K.f'
 end
 
 end
