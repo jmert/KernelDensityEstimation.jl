@@ -17,6 +17,6 @@ Unitful = "1986cc42-f94f-5a68-af5c-568840ba703d"
 KernelDensityEstimation = {path = ".."}
 
 [compat]
-GR = "0.73.1"
+GR = "0.73.14"
 Plots = "1.40.13"
 Unitful = "1.6"
