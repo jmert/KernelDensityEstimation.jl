@@ -79,7 +79,7 @@ const LB = Histogramming.LinearBinning()
         # given an n-tuple value with units,
         val = ntuple(i -> Quantity(i/6.0, u"m"), Val(N))
         # the histogram axes have the same units, and the density has inverse units
-        uedges = map(c -> c .* u"m", edges)
+        uedges = map(e -> range(first(e) * u"m", last(e) * u"m", length = length(e)), edges)
         uhist = zeros(typeof(1.0u"m^-1"), axes(hist)...)
         # verify that the function accepts unitful quantities
         @test _hist_inner!(style, uhist, HistEdge.(uedges), val, 1.0) === nothing
@@ -138,7 +138,7 @@ end
         # make data unitful, with mixed unit axes
         units = (u"m", u"s^-2", u"kg")[1:N]
         vals = map((x, u) -> x .* u, x1, units)
-        uedges = map((e, u) -> e .* u, edges, units)
+        uedges = map((e, u) -> range(first(e) * u, last(e) * u, length = length(e)), edges, units)
         uhist = zeros(_hist_eltype(uedges), axes(hist)...)
         # verify that the function accepts unitful quantities
         @test _histogram!(style, uhist, HistEdge.(uedges), vals, nothing) === 1.0
