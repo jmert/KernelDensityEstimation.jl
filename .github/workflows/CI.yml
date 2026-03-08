@@ -20,45 +20,99 @@ jobs:
   test:
     if: "!contains(github.event.head_commit.message, 'skip ci')"
     name: Tests
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         version:
-          - 'min'     # earliest supported
-          - '1.9'     # earliest with pkg extensions
           - '1'       # latest release
           - 'pre'
-        os:
-          - ubuntu-latest
-        arch:
-          - x64
     steps:
-      - uses: actions/checkout@v6
-      - uses: julia-actions/setup-julia@v2
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install Julia
+        uses: julia-actions/setup-julia@v2
         with:
           version: ${{ matrix.version }}
-          arch: ${{ matrix.arch }}
-      - uses: julia-actions/cache@v2
-      - name: Remove package extension dependencies (for Julia <1.9)
-        if: ${{ matrix.version == 'min' }}
+
+      - name: Setup Julia cache
+        uses: julia-actions/cache@v2
+
+      - name: Prepare Julia environment
+        uses: julia-actions/julia-buildpkg@v1
+      - name: Run test suite
+        uses: julia-actions/julia-runtest@v1
+
+      - name: Process code coverage
+        uses: julia-actions/julia-processcoverage@v1
+      - name: Upload code coverage
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: lcov.info
+
+  mintest:
+    if: "!contains(github.event.head_commit.message, 'skip ci')"
+    name: Minimum-Version Tests
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        version:
+          - '1.6'     # earliest supported
+          - '1.9'     # earliest with pkg extensions
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install Julia
+        uses: julia-actions/setup-julia@v2
+        with:
+          version: ${{ matrix.version }}
+
+      - name: Setup Julia cache
+        uses: julia-actions/cache@v2
+
+      # remove unnecessary dependencies on Julia v1.6 that are only used by package
+      # extensions
+      - name: Remove package extension dependencies
+        if: ${{ matrix.version == '1.6' }}
         run: |
           julia --project=test -e '
           using Pkg
           Pkg.rm(["CairoMakie", "Distributions", "GR", "Makie", "Plots", "UnicodePlots"])
           '
-      - uses: julia-actions/julia-downgrade-compat@v1  # @v2 not usable on Julia v1.6
-        if: ${{ matrix.version == 'min' }}
-      - uses: julia-actions/julia-downgrade-compat@v2.2.0  # TODO: does not resolve v1.9
-        if: ${{ matrix.version == '1.9' }}
-      - uses: julia-actions/julia-buildpkg@v1
-      - uses: julia-actions/julia-runtest@v1
-      - uses: julia-actions/julia-processcoverage@v1
-      - uses: codecov/codecov-action@v5
+
+      # test against minimum-declared versions on both the earliest-supported release and
+      # the earliest that provides package extensions
+      - name: Downgrade dependencies
+        uses: julia-actions/julia-downgrade-compat@v1  # @v2 not usable on Julia v1.6
+        if: ${{ matrix.version == '1.6' }}
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: lcov.info
+          projects: .,test
+          skip: "LinearAlgebra,Logging,Random,Statistics,Test"
+      - name: Downgrade dependencies
+        uses: julia-actions/julia-downgrade-compat@v2
+        if: ${{ matrix.version == '1.9' }}
+        with:
+          projects: .,test
+          skip: "LinearAlgebra,Logging,Random,Statistics,Test"
+          julia_version: ${{ matrix.version }}
+
+      - name: Run test suite
+        run: |
+          julia --project=test --color=yes -e '
+            import Pkg
+            Pkg.develop(Pkg.PackageSpec(path=pwd()))
+            Pkg.instantiate()
+            Pkg.status(; mode=Pkg.PKGMODE_MANIFEST)
+            include("test/runtests.jl")
+          '
+
   docs:
+    needs: test
     name: Documentation
     runs-on: ubuntu-latest
     steps:
