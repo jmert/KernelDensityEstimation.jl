@@ -112,7 +112,7 @@ Depth = 2:2
   image size.
 - The documentation has generally been improved:
   - A new ["Showcase" section](showcase.md) has been added to showcase examples of density estimation with this package.
-  - A [User Guide](userguide.md) has been started to give a brief introduction to installing and using the package.
+  - A [User Guide](userguide/index.md) has been started to give a brief introduction to installing and using the package.
   - The documentation now includes release notes.
 
 ---

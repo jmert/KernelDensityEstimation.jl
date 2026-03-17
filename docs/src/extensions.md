@@ -1,5 +1,6 @@
 ```@meta
 CurrentModule = KernelDensityEstimation
+CollapsedDocStrings = true
 ```
 ```@setup
 using CairoMakie
@@ -21,8 +22,10 @@ Depth = 2:2
 
 A univariate distribution from
 [`Distributions.jl`](https://juliahub.com/ui/Packages/General/Distributions)
-can be used as a value for the `bounds` argument of [`kde`](@ref), wherein the boundary conditions of the distribution
-will be used to automatically set appropriate values of `lo`, `hi`, and `boundary`.
+can be used as a value for the `bounds` argument of [`kde`](@ref) to automatically set the boundary condition and
+limits for the density estimate from the
+[support](https://en.wikipedia.org/wiki/Support_(mathematics))
+(via [`extrema`](@extref Base.extrema-Tuple{UnivariateDistribution}))) of the distribution.
 
 For example, generating a density estimate for a non-negative parameter in a Markov chain Monte Carlo (MCMC) chain
 is often paired with a similarly non-negative prior.

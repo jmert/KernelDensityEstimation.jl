@@ -11,4 +11,9 @@ function bounds(data::Tuple{Vararg{AbstractVector,N}}, dists::Tuple{Vararg{Univa
     return bounds(data, ntuple(i -> (extrema(dists[i])..., nothing), Val(N)))
 end
 
+# Match 1D special case in base package
+function bounds(data::AbstractVector, dist::UnivariateDistribution)
+    return bounds((data,), (dist,))
+end
+
 end

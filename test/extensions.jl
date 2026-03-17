@@ -44,6 +44,9 @@ end
     @test first(K.x) ≈ minimum(D) + step(K.x) / 2
     @test last(K.x) ≈ maximum(D) - step(K.x) / 2
 
+    # 1D special case, accepting an unwrapped data vector
+    @test KDE.bounds((r,), D) === KDE.bounds(r, D)
+
     if isdefined(Test, :detect_closure_boxes)
         ext = Base.get_extension(KDE, :KDEDistributionsExt)
         @test length(Test.detect_closure_boxes(ext)) == 0

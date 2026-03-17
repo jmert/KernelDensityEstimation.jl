@@ -9,18 +9,46 @@ function bounds(::Any, spec::Any)
     throw(ArgumentError("Unknown how to interpret bounds `$spec` as interval and boundary condition"))
 end
 
-# a complete specification of bounds is a lower limit, upper limit, and the boundary condition
-const BoundsSpec = Tuple{Union{<:Number,Nothing}, Union{<:Number,Nothing},
-                         Union{Boundary.T,Symbol,Nothing}}
-# an incomplete specification skips the boundary conditions and uses an implicit definition
-const BoundsLims = Tuple{Union{<:Number,Nothing}, Union{<:Number,Nothing}}
-# we accept as arguments either an incomplete or complete specification
-const BoundsArgs = Union{BoundsSpec, BoundsLims}
+"""
+    BoundsSpec = Tuple{Union{<:Number,Nothing},
+                       Union{<:Number,Nothing},
+                       Union{Boundary.T,Symbol,Nothing}}
 
+A "complete" specification of the bounds of a dimension, providing the lower/left
+and upper/right limits and the corresponding boundary condition(s).
+
+See also: [`BoundsLims`](@ref), [`Boundary`](@ref)
+"""
+const BoundsSpec = Tuple{Union{<:Number,Nothing},
+                         Union{<:Number,Nothing},
+                         Union{Boundary.T,Symbol,Nothing}}
 
 """
-   specs = bounds(data, specs)
-   ((lo, hi, bc),) = bounds((x,), ((lo, hi, bc),))
+    BoundsLims = Tuple{Union{<:Number,Nothing},
+                       Union{<:Number,Nothing}}
+
+An "incomplete" specification of the bounds of a dimension, providing only the lower/left
+and upper/right limits.
+The unspecified boundary condition is assumed to be [`Open`](@ref Boundary).
+
+See also: [`BoundsSpec`](@ref)
+"""
+const BoundsLims = Tuple{Union{<:Number,Nothing}, Union{<:Number,Nothing}}
+
+"""
+    BoundsArgs = Union{Nothing, BoundsSpec, BoundsLims}
+
+Either of the incomplete/complete bounds specifications [`BoundsLims`](@ref) and
+[`BoundsSpec`](@ref), respectively, or the "missing" specification `nothing` which is
+interpreted as the inferred open interval `(nothing, nothing, Open)`.
+
+See also: [`BoundsSpec`](@ref), [`BoundsLims`](@ref), [`Boundary`](@ref)
+"""
+const BoundsArgs = Union{Nothing, BoundsSpec, BoundsLims}
+
+"""
+    specs′ = bounds(data::Tuple{Vararg{AbstractVector,N}},
+                    specs::Tuple{Vararg{BoundsSpec,N}}) where {N}
 
 In 1D where `data = (x,)` and `specs = ((lo, hi, bc),)`, refine the interval `lo` to `hi`
 and boundary condition `bc` to replace values of `nothing` with appropriate values based on
@@ -102,13 +130,13 @@ function bounds(data::Tuple{Vararg{AbstractVector,N}},
     end
 end
 
-# default boundary condition is open in kde(), so interpret a pair of limits as an open
-# boundary condition
+# accept and fill in incomplete specifications
 function bounds(data::Tuple{Vararg{AbstractVector,N}},
                 spec::Tuple{Vararg{BoundsArgs,N}}) where {N}
     spec′ = ntuple(Val(N)) do ii
         s = spec[ii]
-        return s isa BoundsSpec ? s : (s..., Open)
+        return s isa Nothing ? (nothing, nothing, Open) :
+               s isa BoundsSpec ? s : (s..., Open)
     end
     return bounds(data, spec′)
 end
@@ -119,11 +147,37 @@ end
 Infers the domain over all dimensions in `data` assuming open intervals.
 """
 function bounds(data::Tuple{Vararg{AbstractVector,N}}, ::Nothing) where {N}
-    return bounds(data, ntuple(_ -> (nothing, nothing, Open), Val(N)))
+    return bounds(data, ntuple(_ -> nothing, Val(N)))
 end
 
-# special case for 1D
-bounds(data::Tuple{AbstractVector}, spec::BoundsArgs) = bounds(data, (spec,))
+# special cases for 1D
+"""
+    bounds(data::Tuple{AbstractVector}, spec::Union{BoundsLims,BoundsSpec})
+
+Special case of [`bounds`](@ref bounds(::NTuple{N,AbstractVector}, ::Tuple{Vararg{BoundsSpec,N}}) where {N})
+for univariate data which accepts a bounds specification without the wrapping tuple.
+
+## Examples
+```jldoctest; setup = :(import .KDE: bounds)
+julia> bounds(([1.0, 2.0],), (0.0, nothing))
+((0.0, 2.0, KernelDensityEstimation.Boundary.Open),)
+```
+"""
+bounds(data::Tuple{AbstractVector}, spec::Union{BoundsLims,BoundsSpec}) = bounds(data, (spec,))
+
+"""
+    bounds(data::AbstractVector, spec::Union{BoundsLims,BoundsSpec})
+
+Special case of [`bounds`](@ref bounds(::NTuple{N,AbstractVector}, ::Tuple{Vararg{BoundsSpec,N}}) where {N})
+for univariate data which accepts the arguments without the wrapping tuples.
+
+## Examples
+```jldoctest; setup = :(import .KDE: bounds)
+julia> bounds([1.0, 2.0], (0.0, nothing))
+((0.0, 2.0, KernelDensityEstimation.Boundary.Open),)
+```
+"""
+bounds(data::AbstractVector, spec::Union{BoundsLims,BoundsSpec}) = bounds((data,), (spec,))
 
 
 """
@@ -1063,19 +1117,13 @@ The interval of the density estimate can be controlled by either the set of `lo`
 `boundary` keywords or the `bounds` keyword, where the former are conveniences for setting
 `bounds = (lo, hi, boundary)`.
 The minimum and maximum of `v` are used if `lo` and/or `hi` are `nothing`, respectively.
-(See also [`bounds`](@ref).)
+See [`bounds`](@ref) for a complete description of acceptable boundary conditions.
 
 The KDE is constructed by first histogramming the input `v` into `nbins` many bins with
 outermost bin edges spanning `lo` to `hi`. The span of the histogram may be expanded outward
 based on `boundary` condition, dictating whether the boundaries are open or closed.
 The `bwratio` parameter is used to calculate `nbins` when it is not given and corresponds
 (approximately) to the ratio of the bandwidth to the width of each histogram bin.
-
-Acceptable values of `boundary` are:
-- `:open` or [`Open`](@ref Boundary)
-- `:closed` or [`Closed`](@ref Boundary)
-- `:closedleft`, `:openright`, [`ClosedLeft`](@ref Boundary), or [`OpenRight`](@ref Boundary)
-- `:closedright`, `:openleft`, [`ClosedRight`](@ref Boundary), or [`OpenLeft`](@ref Boundary)
 
 The histogram is then convolved with a Gaussian distribution with standard deviation
 `bandwidth`.

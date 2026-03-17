@@ -24,6 +24,7 @@ DocMeta.setdocmeta!(KernelDensityEstimation, :DocTestSetup, quote
 bib = CitationBibliography(joinpath(@__DIR__, "src", "refs.bib");
                            style = :numeric)
 links = InterLinks(
+    "Distributions" => "https://juliastats.org/Distributions.jl/stable/",
     "Julia" => "https://docs.julialang.org/en/v1/",
     "UnicodePlots" => "https://juliaplots.org/UnicodePlots.jl/stable/",
 )
@@ -43,7 +44,10 @@ makedocs(
     authors = "Justin Willmert",
     pages = [
         "index.md",
-        "userguide.md",
+        "User Guide" => [
+            "userguide/index.md",
+            "userguide/boundaries.md",
+        ],
         "extensions.md",
         "explain.md",
         hide("showcase.md", mdglob("showcase")),

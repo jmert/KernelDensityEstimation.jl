@@ -132,10 +132,9 @@ end
 
     @testset "Inferred boundary conditions ($(N)D)" for N in 1:3
         # inferring boundary specifications
-        #   implicit :open condition filled in before limits are interpreted
         data = (([1.0, 2.0] for _ in 1:N)...,)
         bcrest = (((0.0, 3.0, KDE.Closed) for _ in 2:N)...,)
-
+        #   implicit :open condition filled in before limits are interpreted
         @test KDE.bounds(data, ((-Inf, Inf), bcrest...)) === ((1.0, 2.0, KDE.Open), bcrest...)
         @test KDE.bounds(data, ((   0, Inf), bcrest...)) === ((0.0, 2.0, KDE.Open), bcrest...)
         @test KDE.bounds(data, ((-Inf, Inf), bcrest...)) === ((1.0, 2.0, KDE.Open), bcrest...)
@@ -145,6 +144,11 @@ end
         @test KDE.bounds(data, (( 0.0, Inf, nothing), bcrest...)) === ((0.0, 2.0, KDE.ClosedLeft), bcrest...)
         @test KDE.bounds(data, ((-Inf,   0, nothing), bcrest...)) === ((1.0, 0.0, KDE.ClosedRight), bcrest...)
         @test KDE.bounds(data, ((   0,   1, nothing), bcrest...)) === ((0.0, 1.0, KDE.Closed), bcrest...)
+        #   unspecified bounds for a single dimension are filled in as open conditions
+        @test KDE.bounds(data, (nothing, bcrest...)) === ((1.0, 2.0, KDE.Open), bcrest...)
+        #   uniformly unspecified is filled across all dimensions
+        @test KDE.bounds(data, nothing) === (((1.0, 2.0, KDE.Open) for _ in 1:N)...,)
+
 
         for bnds in [(NaN, 1.0), (Inf, 1.0), (0.0, NaN), (0.0, -Inf)]
             @test_throws(ArgumentError(match"Invalid [^\s]+ bound: `(hi|lo) = .*?`"r),
@@ -154,7 +158,11 @@ end
                      KDE.bounds(data, (bcrest..., (nothing, nothing, nothing))))
 
         # check for inferrability
+        @test @inferred(KDE.bounds(data, ((1, 2, KDE.Open), bcrest...))) isa NTuple{N, Tuple{Float64, Float64, KDE.Boundary.T}}
+        @test @inferred(KDE.bounds(data, ((1, 2, :open), bcrest...))) isa NTuple{N, Tuple{Float64, Float64, KDE.Boundary.T}}
         @test @inferred(KDE.bounds(data, ((1, 2), bcrest...))) isa NTuple{N, Tuple{Float64, Float64, KDE.Boundary.T}}
+        @test @inferred(KDE.bounds(data, (nothing, bcrest...))) isa NTuple{N, Tuple{Float64, Float64, KDE.Boundary.T}}
+        @test @inferred(KDE.bounds(data, nothing)) isa NTuple{N, Tuple{Float64, Float64, KDE.Boundary.T}}
     end
 
     # custom bounds spec: a bare tuple of (lo, hi) and (lo, hi, bc) **without** the wrapping
@@ -163,6 +171,11 @@ end
     @test KDE.bounds(([1.0, 2.0],), (    0.0, nothing)) === ((0.0, 2.0, KDE.Open),)
     @test KDE.bounds(([1.0, 2.0],), (nothing, nothing, :closed)) === ((1.0, 2.0, KDE.Closed),)
     @test KDE.bounds(([1.0, 2.0],), (    0.0,     5.0, :closed)) === ((0.0, 5.0, KDE.Closed),)
+    # likewise for data without wrapping in a tuple
+    @test KDE.bounds([1.0, 2.0], (nothing, nothing)) === ((1.0, 2.0, KDE.Open),)
+    @test KDE.bounds([1.0, 2.0], (    0.0, nothing)) === ((0.0, 2.0, KDE.Open),)
+    @test KDE.bounds([1.0, 2.0], (nothing, nothing, :closed)) === ((1.0, 2.0, KDE.Closed),)
+    @test KDE.bounds([1.0, 2.0], (    0.0,     5.0, :closed)) === ((0.0, 5.0, KDE.Closed),)
 
     # custom bounds spec: intead of a MethodError, raise an ArgumentError for unknown
     # specifications

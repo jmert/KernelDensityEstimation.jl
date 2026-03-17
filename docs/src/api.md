@@ -22,6 +22,12 @@ Boundary
 ## Advanced User Interface
 
 ```@docs
+BoundsSpec
+BoundsLims
+BoundsArgs
+bounds(::Tuple{Vararg{AbstractVector,N}}, ::Tuple{Vararg{BoundsSpec,N}}) where {N}
+bounds(::Tuple{AbstractVector}, ::Union{BoundsSpec,BoundsLims})
+bounds(::AbstractVector, ::Union{BoundsSpec,BoundsLims})
 init
 ```
 
