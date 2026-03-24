@@ -18,34 +18,72 @@ end
     # some options to speed up the KDE algorithm for details we're not checking
     kws = (; method = KDE.LinearBinning(), bandwidth = KDE.SilvermanBandwidth(), bwratio = 1.0)
 
-    D = Normal(0.0, 1.0)
-    r = rand(D, 100)
-    lo, hi, bc = KDE.bounds((r,), D)[1]
-    @test bc == KDE.Open
-    @test (lo, hi) == extrema(r)
-    K = kde(r; bounds = D, kws...)
-    @test iszero(first(K.f)) && iszero(last(K.f))  # open boundaries reach density 0 at edges
+    @testset "Univariate" begin
+        # open boundary
+        D = Normal(0.0, 1.0)
+        r = rand(D, 100)
+        lo, hi, bc = KDE.bounds((r,), D)[1]
+        @test bc == KDE.Open
+        @test (lo, hi) == extrema(r)
+        K = kde(r; bounds = D, kws...)
+        @test iszero(first(K.f)) && iszero(last(K.f))  # open boundaries reach density 0 at edges
 
-    D = Exponential(1.0)
-    r = rand(D, 100)
-    lo, hi, bc = KDE.bounds((r,), D)[1]
-    @test bc == KDE.ClosedLeft
-    @test (lo, hi) == (minimum(D), maximum(r))
-    K = kde(r; bounds = D, kws...)
-    @test first(K.x) ≈ minimum(D) + step(K.x) / 2
-    @test iszero(last(K.f))  # open boundary reaches density 0 at edge
+        # half-open boundary
+        D = Exponential(1.0)
+        r = rand(D, 100)
+        lo, hi, bc = KDE.bounds((r,), D)[1]
+        @test bc == KDE.ClosedLeft
+        @test (lo, hi) == (minimum(D), maximum(r))
+        K = kde(r; bounds = D, kws...)
+        @test first(K.x) ≈ minimum(D) + step(K.x) / 2
+        @test iszero(last(K.f))  # open boundary reaches density 0 at edge
 
-    D = Uniform(2.0, 10.0)
-    r = rand(D, 100)
-    lo, hi, bc = KDE.bounds((r,), D)[1]
-    @test bc == KDE.Closed
-    @test (lo, hi) == extrema(D)
-    K = kde(r; bounds = D, kws...)
-    @test first(K.x) ≈ minimum(D) + step(K.x) / 2
-    @test last(K.x) ≈ maximum(D) - step(K.x) / 2
+        # closed boundary
+        D = Uniform(2.0, 10.0)
+        r = rand(D, 100)
+        lo, hi, bc = KDE.bounds((r,), D)[1]
+        @test bc == KDE.Closed
+        @test (lo, hi) == extrema(D)
+        K = kde(r; bounds = D, kws...)
+        @test first(K.x) ≈ minimum(D) + step(K.x) / 2
+        @test last(K.x) ≈ maximum(D) - step(K.x) / 2
 
-    # 1D special case, accepting an unwrapped data vector
-    @test KDE.bounds((r,), D) === KDE.bounds(r, D)
+        # 1D special case, accepting an unwrapped data vector
+        @test KDE.bounds((r,), D) === KDE.bounds(r, D)
+    end
+
+    @testset "Bivariate" begin
+        # N.B. we don't actually care about the values
+        x = randn(100)
+        y = randn(100)
+
+        # open boundaries, single distribution
+        D = MvNormal([0, 0], [1.0 0.0; 0.0 2.0])
+        b1, b2 = KDE.bounds((x, y), D)
+        @test (b1[1], b1[2]) == extrema(x)
+        @test (b2[1], b2[2]) == extrema(y)
+        @test b1[3] == KDE.Open
+        @test b2[3] == KDE.Open
+        @test kde(x, y; bounds = D) !== nothing  # no error
+
+        # open boundaries, multiple distributions
+        D = (Normal(0, 1), Normal(0, sqrt(2)))
+        b1, b2 = KDE.bounds((x, y), D)
+        @test (b1[1], b1[2]) == extrema(x)
+        @test (b2[1], b2[2]) == extrema(y)
+        @test b1[3] == KDE.Open
+        @test b2[3] == KDE.Open
+        @test K = kde(x, y; bounds = D) !== nothing  # no error
+
+        # mixed open / closed boundaries, single distribution
+        D = product_distribution([Normal(0, 1), Uniform(-5, 5)])
+        b1, b2 = KDE.bounds((x, y), D)
+        @test (b1[1], b1[2]) == extrema(x)
+        @test (b2[1], b2[2]) == (-5, 5)
+        @test b1[3] == KDE.Open
+        @test b2[3] == KDE.Closed
+        @test K = kde(x, y; bounds = D) !== nothing  # no error
+    end
 
     if isdefined(Test, :detect_closure_boxes)
         ext = Base.get_extension(KDE, :KDEDistributionsExt)
