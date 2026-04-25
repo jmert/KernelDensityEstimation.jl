@@ -24,7 +24,6 @@ pkg> add KernelDensityEstimation
 ### Simple kernel density estimate
 
 ```@setup get_started
-using Distributions
 using Random
 using CairoMakie
 CairoMakie.activate!(type = "svg")
@@ -35,8 +34,9 @@ Random.seed!(101)
 For the following example, we'll use a small sample of Gaussian deviates:
 
 ```@example get_started
-using KernelDensityEstimation
-x = 3 .+ 0.1 .* randn(250) # x ~ Normal(3, 0.1)
+using Distributions
+
+x = rand(Normal(3, 0.1), 250)
 nothing  # hide
 ```
 
@@ -155,4 +155,80 @@ As expected, this shifts the resultant density estimate to the right, toward mor
     Both of the bandwidth estimators ([`SilvermanBandwidth`](@ref) and [`ISJBandwidth`](@ref)) use this definition
     in scaling the bandwidth with the (effective) sample size.
 
-## Bivariate and Multivariate Densities
+## Bivariate Densities
+
+When two or more parameters are of interest, the bivariate density is commonly used to visualize correlations among
+the parameters.
+
+As an example of such correlations, take the following simulation which generates a noisy dataset around a known
+line, and we use ordinary least-squares regression of the data to obtain the slope and intercept of the best-fit line.
+We visualize the accumulated distribution of the recovered fit parameters.
+
+```@example get_started
+Nsamp = 1_000
+Npts = 10
+
+# simulation
+x = range(5, 15, length = Npts)
+D = [x.^0 x.^1]  # design matrix
+Random.seed!(101)  # hide
+yobs = (0.2 .* x .+ 3.0) .+ rand(Normal(0, 2.2), Npts, Nsamp)
+
+# fitting
+params = (D'D) \ (D'yobs)
+offsets = @view params[1, :]
+slopes = @view params[2, :]
+nothing  # hide
+```
+
+Each of the vectors `offsets` and `slopes` contain instances of the parameter, correlated over simulation realizations.
+We can produce the 1D density estimates as above, and we can create the 2D density estimate by simply providing both
+vectors (with the order of arguments corresponding to each increasing dimension in the output density).
+
+```@example get_started
+K_slope = kde(slopes)
+K_offset = kde(offsets)
+K_both = kde(slopes, offsets)
+nothing  # hide
+```
+
+```@setup get_started
+isdefined(Base.Main, :hpd) || Base.include(Base.Main, joinpath(@__DIR__, "hpd.jl"))
+using Base.Main: hpd
+
+fig = Figure(size = (400, 400))
+
+ax11 = Axis(fig[1, 1])
+plot!(ax11, K_slope)
+ax22 = Axis(fig[2, 2])
+plot!(ax22, K_offset)
+ax21 = Axis(fig[2, 1], ylabel = "offset", xlabel = "slope")
+plot!(ax21, K_both, levels = hpd(K_both.f),
+      linewidth = 1.5, color = Makie.wong_colors()[1])
+
+linkxaxes!(ax11, ax21)
+hidexdecorations!(ax11, ticks = false, grid = false)
+hideydecorations!(ax11, ticks = false, grid = false)
+hideydecorations!(ax22, ticks = false, grid = false)
+rowgap!(fig.layout, Fixed(4))
+colgap!(fig.layout, Fixed(4))
+
+xlims!(ax11, hpd(K_slope.x, K_slope.f, 1 - 1e-4)...)
+let lim = hpd(K_offset.x, K_offset.f, 1 - 1e-4)
+    xlims!(ax22, lim...)
+    ylims!(ax21, lim...)
+end
+
+save("getting_started_2dsim.svg", fig)
+```
+```@figure
+![](getting_started_2dsim.svg)
+```
+
+From the 2D density, we clearly see (expected) correlation between the slope and offset parameters — a relatively low
+slope results in a higher offset and vice versa.
+
+!!! important
+    Higher-order density estimates are also supported by just adding additional vector arguments to the `kde()` call,
+    but the support and utility is limited.
+    As they are also harder to usefully visualize, they will not be discussed further here.
