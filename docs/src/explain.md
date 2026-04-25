@@ -39,6 +39,8 @@ through their visual impact on a few example distributions.
    distributions compared to the previous stage are a consequence of the multiplicative bias correction permitting
    a larger kernel bandwidth (without broadening the peak in the **Chisq3** distribution).
 
+#### Univariate Estimates
+
 !!! details "Plotting Code"
     ```@example estimator_comparisons
     using CairoMakie
@@ -62,7 +64,7 @@ through their visual impact on a few example distributions.
     ]
 
     for (name, dist) in dists
-        fig = Figure(size = (900, 400))
+        fig = Figure(size = (900, 350))
         axs = Axis[]
 
         for (ii, method) in enumerate(estimators)
@@ -86,6 +88,13 @@ through their visual impact on a few example distributions.
         linkaxes!(axs...)
 
         Label(fig[0, :], name, font = :bold, fontsize = 20)
+
+        colgap!(fig.layout, Fixed(4))
+        rowgap!(fig.layout, Fixed(3))
+        rowsize!(fig.layout, 1, Aspect(1, 1.0))
+        fig.layout.alignmode = Outside(4)
+        resize_to_layout!(fig)
+
         save("comparison_$name.svg", fig)
     end
     nothing  # hide
@@ -95,5 +104,97 @@ through their visual impact on a few example distributions.
 ![](comparison_Chisq3.svg)
 ![](comparison_HalfNormal.svg)
 ![](comparison_Uniform.svg)
+
+#### Bivariate Estimates
+
+The following bivariate density estimates use the same distributions as above in the univariate case for the x-axis,
+and a standard normal (zero mean, unit standard deviation) is used for the y-axis.
+
+!!! details "Plotting Code"
+    ```@example estimator_comparisons_2d
+    using CairoMakie
+    using Distributions
+    using Random
+
+    import KernelDensityEstimation as KDE
+
+    isdefined(Base.Main, :hpd) || Base.include(Base.Main, joinpath(@__DIR__, "hpd.jl"))
+    using Base.Main: hpd
+
+    dists = [
+        "Normal" => Normal(0.0, 1.0),
+        "Chisq3" => Chisq(3.0),
+        "HalfNormal" => truncated(Normal(0.0, 1.0); lower = 0.0),
+        "Uniform" => Uniform(0.0, 1.0),
+    ]
+
+    disty = Normal(0.0, 1.0)
+    σmin = logcdf(disty, -4.0)
+    σmax = logcdf(disty, +4.0)
+    yr = range(-4.0, 4.0, 251)
+
+    estimators = [
+        KDE.LinearBinning(),
+        KDE.BasicKDE(),
+        KDE.LinearBoundaryKDE(),
+        KDE.MultiplicativeBiasKDE(),
+    ]
+
+    for (name, dist) in dists
+        fig = Figure(size = (900, 350))
+        axs = Axis[]
+
+        # theory distribution
+        xl = minimum(dist) |> z -> isfinite(z) ? z : invlogcdf(dist, σmin)
+        xh = maximum(dist) |> z -> isfinite(z) ? z : invlogcdf(dist, σmax)
+        xr = range(xl, xh, 251)
+        xy = Iterators.map(collect, Iterators.product(xr, yr))
+        distxy = product_distribution(dist, disty)
+        theory = pdf.(Ref(product_distribution(dist, disty)), xy)
+
+        levels = hpd(theory, 2 .* cdf.(Ref(disty), (1:3)) .- 1)
+
+        Random.seed!(1)  # hide
+        rvy = rand(disty, 5_000)
+
+        for (ii, method) in enumerate(estimators)
+            dohist = method isa KDE.AbstractBinningKDE
+
+            Random.seed!(123)  # hide
+            # empirical distribution
+            rvx = rand(dist, 5_000)
+            dens = KDE.kde(rvx, rvy; method, bounds = (dist, disty), bwratio = dohist ? (1, 1) : (8, 8))
+
+            ax = Axis(fig[1, ii]; title = string(nameof(typeof(method))),
+                                  xlabel = "x-value", ylabel = "y-value")
+            contour!(ax, xr, yr, theory; label = "true", levels = levels,
+                     color = (:black, 0.5), linestyle = :dash)
+            contour!(ax, dens; label = "estimate", levels = levels,
+                     color = dohist ? :blue3 : :firebrick3)
+            ii > 1 && hideydecorations!(ax, grid = false, ticks = false)
+
+            push!(axs, ax)
+        end
+        linkaxes!(axs...)
+        xlims!(axs[1], extrema(xr) .+ (-0.05, 0.05) .* (xr[end] - xr[1]))
+        ylims!(axs[1], extrema(yr) .+ (-0.05, 0.05) .* (yr[end] - yr[1]))
+
+        Label(fig[0, :], name, font = :bold, fontsize = 20)
+
+        colgap!(fig.layout, Fixed(4))
+        rowgap!(fig.layout, Fixed(3))
+        rowsize!(fig.layout, 1, Aspect(1, 1.0))
+        fig.layout.alignmode = Outside(4)
+        resize_to_layout!(fig)
+
+        save("comparison_Normal_$name.svg", fig)
+    end
+    nothing  # hide
+    ```
+
+![](comparison_Normal_Normal.svg)
+![](comparison_Normal_Chisq3.svg)
+![](comparison_Normal_HalfNormal.svg)
+![](comparison_Normal_Uniform.svg)
 
 ## Bandwidth Estimators
