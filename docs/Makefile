@@ -7,7 +7,7 @@ mkfile_path := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 serve: instantiate
 	cd $(realpath $(mkfile_path)..) && \
 	$(JULIA) --startup-file=no --project=docs/ \
-		-e 'using LiveServer; LiveServer.servedocs()'
+		-e 'using LiveServer; LiveServer.servedocs(include_dirs=["src/"])'
 
 build: instantiate
 	cd $(realpath $(mkfile_path)..) && \

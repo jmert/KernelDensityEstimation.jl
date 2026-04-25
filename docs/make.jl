@@ -1,3 +1,6 @@
+using Revise
+Revise.revise()  # for LiveServer support for package changes
+
 using Documenter
 using DocumenterCitations
 using DocumenterInterLinks
