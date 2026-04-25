@@ -6,7 +6,14 @@ K_βd = kde(chain_βd; weights = chain_weight, lo =  0.8, hi =  2.4)
 K_βs = kde(chain_βs; weights = chain_weight, lo = -4.5, hi = -2.0)
 K_αd = kde(chain_αd; weights = chain_weight, lo = -1.0, hi =  0.0, boundary = :closed)
 K_αs = kde(chain_αs; weights = chain_weight, lo = -1.0, hi =  0.0, boundary = :closed)
-K_ε  = kde(chain_ε;  weights = chain_weight, lo = -1.0, hi =  1.0, boundary = :closed)</code></pre><p><img src="index.svg" alt/></p><p>Note that because this package does not support constructing 2D density estimates, the 68% and 95% confidence &quot;ellipses&quot; in the lower-left triangle of the plot has been replaced with simple 2D histograms. The hex bin sizes have been chosen using 2× the automatically-determined bandwidths of the corresponding 1D curves.</p><details class="admonition is-details" id="Source-Code-f2c0bcb1f5a74a64"><summary class="admonition-header">Source Code<a class="admonition-anchor" href="#Source-Code-f2c0bcb1f5a74a64" title="Permalink"></a></summary><div class="admonition-body"><p><a href="index.jl"><img src="https://img.shields.io/badge/code-blue?style=for-the-badge&amp;logo=julia&amp;logoColor=white" alt="download code"/></a> <a href="Project.toml"><img src="https://img.shields.io/badge/Project.toml-green?style=for-the-badge&amp;logo=toml&amp;logoColor=white" alt="download Project.toml"/></a> <a href="Manifest.toml"><img src="https://img.shields.io/badge/Manifest.toml-purple?style=for-the-badge&amp;logo=toml&amp;logoColor=white" alt="download Manifest.toml"/></a></p><pre><code class="language-julia hljs">using CSV
+K_ε  = kde(chain_ε;  weights = chain_weight, lo = -1.0, hi =  1.0, boundary = :closed)
+
+K_r_Ad = kde(chain_r, chain_Ad; weights = chain_weight,
+             bounds = ((0.0, Inf, :closedleft), (0.0, Inf, :closedleft)))
+K_r_As = kde(chain_r, chain_As; weights = chain_weight,
+             bounds = ((0.0, Inf, :closedleft), (0.0, Inf, :closedleft)))
+K_Ad_As = kde(chain_Ad, chain_As; weights = chain_weight,
+             bounds = ((0.0, Inf, :closedleft), (0.0, Inf, :closedleft)))</code></pre><p><img src="index.svg" alt/></p><details class="admonition is-details" id="Source-Code-6892c27f63b8839c"><summary class="admonition-header">Source Code<a class="admonition-anchor" href="#Source-Code-6892c27f63b8839c" title="Permalink"></a></summary><div class="admonition-body"><p><a href="index.jl"><img src="https://img.shields.io/badge/code-blue?style=for-the-badge&amp;logo=julia&amp;logoColor=white" alt="download code"/></a> <a href="Project.toml"><img src="https://img.shields.io/badge/Project.toml-green?style=for-the-badge&amp;logo=toml&amp;logoColor=white" alt="download Project.toml"/></a> <a href="Manifest.toml"><img src="https://img.shields.io/badge/Manifest.toml-purple?style=for-the-badge&amp;logo=toml&amp;logoColor=white" alt="download Manifest.toml"/></a></p><pre><code class="language-julia hljs">using CSV
 import KernelDensityEstimation as KDE
 using .KDE
 
@@ -67,6 +74,12 @@ K_αd = kde(chain_αd; weights = chain_weight, lo = -1.0, hi =  0.0, boundary = 
 K_αs = kde(chain_αs; weights = chain_weight, lo = -1.0, hi =  0.0, boundary = :closed)
 K_ε  = kde(chain_ε;  weights = chain_weight, lo = -1.0, hi =  1.0, boundary = :closed)
 
+K_r_Ad = kde(chain_r, chain_Ad; weights = chain_weight,
+             bounds = ((0.0, Inf, :closedleft), (0.0, Inf, :closedleft)))
+K_r_As = kde(chain_r, chain_As; weights = chain_weight,
+             bounds = ((0.0, Inf, :closedleft), (0.0, Inf, :closedleft)))
+K_Ad_As = kde(chain_Ad, chain_As; weights = chain_weight,
+             bounds = ((0.0, Inf, :closedleft), (0.0, Inf, :closedleft)))
 
 # !!!!!!!!!!
 # !! NOTE !!
@@ -110,7 +123,13 @@ kws_prior = (; linewidth = 1, linestyle = :dash, color = :blue)
 dust_label = L&quot;$A_\mathrm{dust}$ @ $\ell=80$ &amp; 353GHz [$\mu K^2$]&quot;
 sync_label = L&quot;$A_\mathrm{sync}$ @ $\ell=80$ &amp; 23GHz [$\mu K^2$]&quot;
 
-peaknorm(K::KDE.UnivariateKDE) = KDE.UnivariateKDE(K.x, K.f ./ maximum(K.f))
+peaknorm(K::KDE.MultivariateKDE) = typeof(K)(K.axes, K.density ./ maximum(K.density))
+
+function hpd(K::KDE.MultivariateKDE, levels=[0.68, 0.95])
+    s = sort(vec(K.density), rev = true)
+    c = cumsum(s) ./ sum(s)
+    return [s[searchsortedfirst(c, l)] for l in levels]
+end
 
 #############
 # large grid
@@ -122,7 +141,7 @@ ax_r = let ax = Axis(large_grid[1, 1], aspect = 1)
     hidexdecorations!(ax, ticks = false)
     ax.ylabel = L&quot;L / L_\mathrm{peak}&quot;
     xlims!(ax, 0, 0.18)
-    ylims!(ax, 0, nothing)
+    ylims!(ax, 0, 10.5 / 10)
     ax.xticks = 0:0.04:0.16
     ax.yticks = 0:0.2:1
     ax
@@ -133,7 +152,7 @@ ax_Ad = let ax = Axis(large_grid[2, 2])
     hidexdecorations!(ax, ticks = false)
     hideydecorations!(ax, ticks = false)
     xlims!(ax, 0, 11)
-    ylims!(ax, 0, nothing)
+    ylims!(ax, 0, 8.5 / 7.5)
     ax.xticks = 0:2:10
     ax.yticks = 0:0.2:1
     ax
@@ -142,7 +161,7 @@ ax_As = let ax = Axis(large_grid[3, 3])
     lines!(ax, peaknorm(K_As); kws_like...)
     hideydecorations!(ax, ticks = false)
     xlims!(ax, 0, 8)
-    ylims!(ax, 0, nothing)
+    ylims!(ax, 0, 8.5 / 7.5)
     ax.xticks = 0:2:8
     ax.yticks = 0:0.2:1
     ax.xlabel = sync_label
@@ -152,9 +171,7 @@ end
 # lower triangle of parameter correlations
 
 ax_r_Ad = let ax = Axis(large_grid[2, 1])
-    # KDE defaults to bwratio = 8, so factor of 16 × Δx is just 2 × bandwidth
-    cellsize = 16 .* (step(K_r.x), step(K_Ad.x))
-    hexbin!(ax, chain_r, chain_Ad; weights, cellsize, colormap = Reverse(:greys))
+    contour!(ax, K_r_Ad, levels = hpd(K_r_Ad); kws_like...)
     hidexdecorations!(ax, ticks = false)
     ax.ylabel = dust_label
     xlims!(ax, 0, 0.18)
@@ -164,9 +181,7 @@ ax_r_Ad = let ax = Axis(large_grid[2, 1])
     ax
 end
 ax_r_As = let ax = Axis(large_grid[3, 1])
-    # KDE defaults to bwratio = 8, so factor of 16 × Δx is just 2 × bandwidth
-    cellsize = 16 .* (step(K_r.x), step(K_As.x))
-    hexbin!(ax, chain_r, chain_As; weights, cellsize, colormap = Reverse(:greys))
+    contour!(ax, K_r_As, levels = hpd(K_r_As); kws_like...)
     ax.xlabel = L&quot;r&quot;
     ax.ylabel = sync_label
     xlims!(ax, 0, 0.18)
@@ -176,9 +191,7 @@ ax_r_As = let ax = Axis(large_grid[3, 1])
     ax
 end
 ax_Ad_As = let ax = Axis(large_grid[3, 2])
-    # KDE defaults to bwratio = 8, so factor of 16 × Δx is just 2 × bandwidth
-    cellsize = 16 .* (step(K_Ad.x), step(K_As.x))
-    hexbin!(ax, chain_Ad, chain_As; weights, cellsize, colormap = Reverse(:greys))
+    contour!(ax, K_Ad_As, levels = hpd(K_Ad_As); kws_like...)
     hideydecorations!(ax, ticks = false)
     ax.xlabel = dust_label
     xlims!(ax, 0, 11)
@@ -268,4 +281,4 @@ small_grid.valign = :top
 small_grid.halign = :right
 
 save(&quot;index.svg&quot;, fig, backend = CairoMakie)
-</code></pre></div></details></article><nav class="docs-footer"><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Friday 3 April 2026 22:02">Friday 3 April 2026</span>. Using Julia version 1.12.5.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+</code></pre></div></details></article><nav class="docs-footer"><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="auto">Automatic (OS)</option><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option><option value="catppuccin-latte">catppuccin-latte</option><option value="catppuccin-frappe">catppuccin-frappe</option><option value="catppuccin-macchiato">catppuccin-macchiato</option><option value="catppuccin-mocha">catppuccin-mocha</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 1.17.0 on <span class="colophon-date" title="Saturday 25 April 2026 22:47">Saturday 25 April 2026</span>. Using Julia version 1.12.6.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
