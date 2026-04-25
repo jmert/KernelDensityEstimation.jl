@@ -11,7 +11,7 @@ Depth = 2:2
 
 ---
 
-## v0.8.0 — Unreleased
+## v0.8.0 — 2026 Apr 25
 
 - The [package extension](extensions.md#ext-unicodeplots) for
   [`UnicodePlots.jl`](https://juliahub.com/ui/Packages/General/UnicodePlots)
