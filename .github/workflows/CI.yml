@@ -88,13 +88,13 @@ jobs:
       # test against minimum-declared versions on both the earliest-supported release and
       # the earliest that provides package extensions
       - name: Downgrade dependencies
-        uses: julia-actions/julia-downgrade-compat@v1  # @v2 not usable on Julia v1.6
+        uses: julia-actions/julia-downgrade-compat@v2.6.2  # @v2 not usable on Julia v1.6
         if: ${{ matrix.version == '1.6' }}
         with:
           projects: .,test
           skip: "LinearAlgebra,Logging,Random,Statistics,Test"
       - name: Downgrade dependencies
-        uses: julia-actions/julia-downgrade-compat@v2
+        uses: julia-actions/julia-downgrade-compat@v2.6.2
         if: ${{ matrix.version == '1.9' }}
         with:
           projects: .,test
