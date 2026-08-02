@@ -19,4 +19,4 @@ KernelDensityEstimation = {path = ".."}
 [compat]
 GR = "0.73.14"
 Plots = "1.40.13"
-Unitful = "1.6"
+Unitful = "1.9.2"
