@@ -11,6 +11,19 @@ Depth = 2:2
 
 ---
 
+## v0.8.2 — 2026 Aug 11
+
+- Properly support estimating over integer arrays which require binning and convolving with floating point spans.
+
+---
+
+## v0.8.1 — 2026 Aug 02
+
+- Bump `RecipesBase` version requirement to >=v1.3.2 to fix problem with older versions generating code in macros that
+  implicitly required `RecipesBase` to be in the module namespace.
+
+---
+
 ## v0.8.0 — 2026 Apr 25
 
 - The [package extension](extensions.md#ext-unicodeplots) for
