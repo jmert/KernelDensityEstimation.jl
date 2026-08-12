@@ -75,6 +75,29 @@ const LB = Histogramming.LinearBinning()
         @test (@allocated _hist_inner!(style, hist, edges′, c₀, 1.0)) == 0
     end
 
+    @testset "Mixed type between edges and values" begin
+        # Support binning a value into convertable/promotable destination
+        h = zeros(Float64, ntuple(_ -> 1, Val(N)))
+
+        # Integer values can convert to float bin edges
+        fedges = ntuple(_ -> HistEdge(0.5, 1.5, 1), Val(N))
+        int_val = ntuple(_ -> 1, Val(N))
+        @test fedges isa Tuple{Vararg{HistEdge{Float64}}}
+        @test int_val isa Tuple{Vararg{Int}}
+        fill!(h, 0.0)
+        @test _hist_inner!(style, h, fedges, int_val, 1.0) === nothing
+        @test sum(h) == 1
+
+        # The opposite can happen as well
+        iedges = ntuple(_ -> HistEdge(0, 1, 1), Val(N))
+        fl_val = ntuple(_ -> 0.5, Val(N))
+        @test iedges isa Tuple{Vararg{HistEdge{Int}}}
+        @test fl_val isa Tuple{Vararg{Float64}}
+        fill!(h, 0.0)
+        @test _hist_inner!(style, h, iedges, fl_val, 1.0) === nothing
+        @test sum(h) == 1
+    end
+
     @testset "Unitful numbers" begin
         # given an n-tuple value with units,
         val = ntuple(i -> Quantity(i/6.0, u"m"), Val(N))

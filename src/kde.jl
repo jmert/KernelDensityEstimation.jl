@@ -241,9 +241,10 @@ end
 
 multivariate_type_from_axis_eltypes(eltypes::Type...) = _mvtype_eltypes(eltypes)
 function _mvtype_eltypes(eltypes::P) where {N, P<:NTuple{N,Type}}
-    T = _invunit(typeof(mapreduce(oneunit, *, eltypes)))
+    T = _invunit(typeof(mapreduce(oneunit ∘ float, *, eltypes)))
     R = map(eltypes) do Ti
-        typeof(zero(Ti):oneunit(Ti):zero(Ti))
+        Tf = float(Ti)
+        typeof(zero(Tf):oneunit(Tf):zero(Tf))
     end
     V = Array{T,N}
     return MultivariateKDE{T,N,Tuple{R...},V}
@@ -696,9 +697,9 @@ end
 estimator_order(::Type{<:AbstractBinningKDE}) = 0
 
 function estimate(method::AbstractBinningKDE,
-                  data::Tuple{Vararg{AbstractVector{T}, N}},
+                  data::Tuple{Vararg{AbstractVector, N}},
                   weights::Union{Nothing, <:AbstractVector},
-                  info::MultivariateKDEInfo{U,N}) where {T,U,N}
+                  info::MultivariateKDEInfo{U,N}) where {U,N}
     edges = _domain_to_edgeranges(info)
     f = Histogramming._histogram(method, data, edges; weights)
     centers = _edgerange_to_centers(edges)

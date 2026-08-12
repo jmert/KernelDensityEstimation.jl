@@ -26,7 +26,7 @@ HistEdge(edge::AbstractRange) = HistEdge(first(edge), last(edge), Int(length(edg
 Base.eltype(::HistEdge{T}) where {T} = T
 
 
-function lookup(edge::HistEdge{T,I}, x::T) where {T,I}
+function lookup(edge::HistEdge{T}, x) where {T}
     U = _unitless(T)
     # the right-most bin is closed right
     if x >= edge.hi

@@ -597,6 +597,14 @@ end
     @test eltype(K1) == eltype(K1.x) == eltype(K1.f) == Float64
     @test eltype(K4) == eltype(K4.x) == eltype(K4.f) == Float32
 
+    @testset "Mixed input types" begin
+        x = collect(0:10)
+        y = randn(11)
+        @test x isa Vector{Int}
+        @test y isa Vector{Float64}
+        @test kde(x, y) isa KDE.BivariateKDE{Float64}
+    end
+
     @testset "Unitful numbers" begin
         urv = Quantity.(rv, u"m")
         Ku = @inferred kde(urv; kws...)
