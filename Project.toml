@@ -24,6 +24,7 @@ KDEUnicodePlotsExt = ["UnicodePlots"]
 [compat]
 Distributions = "0.25.46"
 FFTW = "1.4"
+LinearAlgebra = "< 0.0.1, 1.6"
 Makie = "0.20,0.21,0.22,0.23,0.24"
 PrecompileTools = "1.1"
 RecipesBase = "1.3.2"
